@@ -109,6 +109,22 @@ class SchedulerTests(unittest.TestCase):
         out = invalidate_on_push([syn2, drv], s1, gh=gh)
         self.assertEqual(out.status, "invalidated")
 
+    def test_changed_sha_does_not_reuse_old_workflow_run(self):
+        gh = FakeGhClient()
+        syn = _synapse_wait(sha="syn-sha-1", pr=457)
+        drv = _driver(sha="drv-sha-1", pr=101)
+        gh.add_pr(drv); gh.add_pr(syn)
+        s1 = run([syn, drv], joint_id="joint-e5c", gh=gh)
+        self.assertEqual(gh.dispatch_count(), 1)
+
+        syn2 = dict(syn); syn2["head_sha"] = "syn-sha-2"
+        drv2 = dict(drv)
+        s2 = run([syn2, drv2], joint_id="joint-e5c", gh=gh, prior_state=s1)
+
+        self.assertNotEqual(s1.joint_key, s2.joint_key)
+        self.assertEqual(gh.dispatch_count(), 2)
+        self.assertNotEqual(s1.workflow_runs, s2.workflow_runs)
+
     def test_multi_open_prs_fail_no_dispatch(self):
         gh = FakeGhClient()
         gh.seed_pr("driver", "feature/e6-shared", "sha-a", pr_number=601)
