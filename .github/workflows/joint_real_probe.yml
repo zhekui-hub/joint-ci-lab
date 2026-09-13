@@ -1,35 +1,20 @@
-name: joint-real-probe
-
+﻿name: joint-real-probe
 on:
   workflow_dispatch:
     inputs:
       driver_sha:
-        description: Explicit driver head SHA
         required: true
         type: string
       synapse_sha:
-        description: Explicit synapse head SHA
         required: true
         type: string
       sim_sha:
-        description: Explicit sim head SHA
         required: true
         type: string
-
 permissions:
   contents: read
-
 jobs:
   validate-inputs:
     runs-on: ubuntu-latest
     steps:
-      - name: Validate explicit participant SHAs
-        env:
-          DRIVER_SHA: ${{ inputs.driver_sha }}
-          SYNAPSE_SHA: ${{ inputs.synapse_sha }}
-          SIM_SHA: ${{ inputs.sim_sha }}
-        run: |
-          test -n "$DRIVER_SHA"
-          test -n "$SYNAPSE_SHA"
-          test -n "$SIM_SHA"
-          printf 'driver_sha=%s\nsynapse_sha=%s\nsim_sha=%s\n' "$DRIVER_SHA" "$SYNAPSE_SHA" "$SIM_SHA"
+      - run: echo plan6 fail; exit 1
