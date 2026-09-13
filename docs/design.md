@@ -11,6 +11,7 @@
 | 代码改动面 | 当前阶段以文档 + prototype + mock 仓为准，**不改业务仓现网代码** |
 | 术语对齐 | 与 `experiments.md`、`prototype/shared/joint_schema.md`、`joint_key.py` 一致 |
 | 客户端 | **实验期默认 fake GhClient**（dry-run），暂不配真实 GitHub App；真连时只用下表 `zhekui-hub/joint-ci-*` 私有仓 |
+| 证据边界 | **fake / 本地 dry-run 只能证明调度逻辑、状态机、去重键、汇总规则**；权限、Check 回写、Actions 派发、等待不占真实 runner、跨仓事件时序必须真联调。详见 [`experiments.md` §0](./experiments.md) |
 
 ### 0.1 实验仓坐标（个人号 `zhekui-hub`，全私有，非公司仓）
 
@@ -474,51 +475,58 @@ stateDiagram-v2
 
 ## 9. 分阶段落地
 
-与 `experiments.md`「发布门禁建议」对齐。
+与 `experiments.md` §4 门禁对齐。实验分两层，**禁止混用证据**：
+
+- **烟雾 / 逻辑（fake）**：E1–E10 宣称层 + 大矩阵 F/R 中 `fake|both`；只证明调度逻辑、状态机、去重键、汇总规则。
+- **可行性（真联调）**：P-* + 标 `real` 的 F/R + E2/E3/E5 真跑 `zhekui-hub/joint-ci-*`。fake 全绿 **不得**宣称生产可行。
 
 ### 9.1 总表
 
-| 阶段 | 范围 | 交付物 | 成功标准 | 实验门禁 | 依赖 | 回滚 |
-|---|---|---|---|---|---|---|
-| **P0** 设计冻结 | 本文件 + 实验计划 | `docs/design.md`、`docs/experiments.md`、prototype 对齐说明 | 评审通过；开放问题有建议默认值 | 文档评审 | 无 | 仅文档，回滚=还原文档 |
-| **P1** 骨架 | Arsenal joint 入口 + Issue 状态机 + 假分发 | `joint_ci.yml`、scheduler dry-run、Issue frontmatter、Check pending 写回 | 完整走 `waiting_deps→ready→running→回写`；等待不占 Pod | **E2 人工过一遍** | P0；`joint-ci-lab` + fake GhClient（真连仅 zhekui-hub 白名单） | 关掉 joint 入口 workflow；PR 去掉 CI_MODE 即回单仓 |
-| **P2** 真实去重 | 接入 MultiRepo / Pseudo 显式 SHA | 真实 dispatch；`joint_key` 复用；按 PR 汇总 | Driver↔Synapse 联合只跑一份公共测试；专属隔离 | **E3+E4 自动化绿**；E1 回归 | P1；公共工作流接受显式 SHA | 回退为各仓自行触发重测；保留 Issue 但不派发 |
-| **P3** 自动关联 | 依赖字段自动匹配 + Ready 门闸 + 失效 | 匹配算法、Draft 门闸、invalidate 自动重跑 | 无需评论命令；错峰只跑一轮；push 后旧结果失效 | **E2+E5+E7 绿** | P2；字段解析与 PR 模板 | 关闭自动匹配，临时改手动指定 joint_id |
-| **P4** Sim + harden | 三仓并集、冲突/取消、硬化 | Sim 并入；歧义/关闭路径；实验脚手架 | 实验矩阵相关项全绿 | **E6+E9+E10 绿**；E1/E8 回归绿 | P3；Sim 仓 joint 上报 | 三仓开关分仓关闭；Sim 先退出联合 |
+| 阶段 | 范围 | 交付物 | 成功标准 | 烟雾/逻辑门禁（fake） | 可行性门禁（真联调） | 依赖 | 回滚 |
+|---|---|---|---|---|---|---|---|
+| **P0** 设计冻结 | 本文件 + 实验计划 | `docs/design.md`、`docs/experiments.md`、prototype 对齐说明 | 评审通过；开放问题有建议默认值；证据边界写死 | 文档评审（含 experiments §0） | 无 | 无 | 仅文档，回滚=还原文档 |
+| **P1** 骨架 | Arsenal joint 入口 + Issue 状态机 + 假分发 | `joint_ci.yml`、scheduler dry-run、Issue frontmatter、Check pending 写回 | 完整走 `waiting_deps→ready→running→回写`；fake 下未 dispatch | **E2 fake**：未 dispatch + 状态机 | 不要求（不可用 fake 宣称真实 runner 空闲） | P0；`joint-ci-lab` + fake GhClient（真连仅 zhekui-hub 白名单） | 关掉 joint 入口 workflow；PR 去掉 CI_MODE 即回单仓 |
+| **P2** 真实去重 | 接入 MultiRepo / Pseudo 显式 SHA | 真实 dispatch；`joint_key` 复用；按 PR 汇总 | Driver↔Synapse 联合只跑一份公共测试；专属隔离 | **E3+E4 自动化绿（逻辑）**；E1 回归；F6/F7/F8 fake | 同源 Check URL、Actions `public_runs=1` 记入可行性，不记入 fake | P1；公共工作流接受显式 SHA | 回退为各仓自行触发重测；保留 Issue 但不派发 |
+| **P3** 自动关联 | 依赖字段自动匹配 + Ready 门闸 + 失效 | 匹配算法、Draft 门闸、invalidate 自动重跑 | 无需评论命令；错峰只跑一轮；push 后旧结果失效 | **E2+E5+E7 fake 部分绿** | **E2/E3/E5 真联调** + P3 显式 SHA；真实队列不占机、旧绿勾失效 | P2；字段解析与 PR 模板 | 关闭自动匹配，临时改手动指定 joint_id |
+| **P4** Sim + harden | 三仓并集、冲突/取消、硬化 | Sim 并入；歧义/关闭路径；实验脚手架 | 烟雾 + 逻辑 PASS；迁公司仓还要可行性 PASS | **E6+E9+E10 绿**；E1/E8 回归；F/R 中 fake\|both 全绿 | **可行性 PASS**：P1–P5 + F14/F15/F16 + E2/E3/E5 real | P3；Sim 仓 joint 上报 | 三仓开关分仓关闭；Sim 先退出联合 |
 
 推荐配对顺序（§12）：**P2/P3 先 Driver↔Synapse，P4 再 Sim**。
 
 ### 9.2 各阶段成功标准（可执行）
 
+分层定义见 `experiments.md` §3.4 / §4：**烟雾 PASS** / **逻辑 PASS** / **可行性 PASS**。下表括号内为证据层。
+
 **P0**
 
 - [ ] §4–§7 规则可实现，不依赖读代码猜语义
-- [ ] 与 experiments E1–E10 术语一致
+- [ ] 与 experiments E1–E10 及大矩阵 F/R/P 术语一致
 - [x] 确认「仅 zhekui-hub/joint-ci-* 私有仓验证」写入 §0（协调者已定案）
+- [ ] 确认证据边界：fake ≠ 生产可行（experiments §0）
 
-**P1**
+**P1**（进本阶段：E2 fake 绿即可；可行性不挡编码）
 
-- [ ] 创建 label=`joint-ci` Issue，frontmatter 可解析
-- [ ] 缺依赖时 Check=pending 且无 MultiRepo/Pseudo runner
-- [ ] dry-run 派发写入 `workflow_runs`
+- [ ] 创建 label=`joint-ci` Issue，frontmatter 可解析（fake 可先证逻辑）
+- [ ] 缺依赖时 Check=pending 且 **未 dispatch**（fake）；无真实 runner 占用属可行性
+- [ ] dry-run 派发写入 `workflow_runs`（fake）
 
-**P2**
+**P2**（进本阶段：E3+E4 + F6/F7/F8 逻辑绿；同源 URL 不计入 fake）
 
-- [ ] `public_runs=1`（E3）
-- [ ] 专属失败不广播（E4）
-- [ ] 同 joint_key 不双派发
+- [ ] `public_runs=1` 逻辑计数（E3，fake）；Actions 实跑次数（可行性）
+- [ ] 专属失败不广播（E4，fake；Check 可见性 real）
+- [ ] 同 joint_key 不双派发（F8，both）
 
-**P3**
+**P3**（进本阶段：E2+E5+E7 fake 部分绿；关「不占真实机 / 旧绿勾」必须真联调）
 
-- [ ] 错峰自动关联（E2）
-- [ ] synchronize → invalidated → 新 joint_key（E5）
-- [ ] Draft 不跑重测，Ready 后启动（E7）
+- [ ] 错峰自动关联（E2 fake）；真实队列空闲 + 错峰仍关联（E2/P4 real）
+- [ ] synchronize → invalidated → 新 joint_key（E5 fake）；旧绿勾不可合入（E5 real）
+- [ ] Draft 不跑重测，Ready 后启动（E7；无真实 job 为 real）
 
-**P4**
+**P4**（harden：逻辑 PASS；迁公司仓还要可行性 PASS）
 
-- [ ] 多 PR 歧义 failure（E6）
-- [ ] 关闭/退出 cancelled（E9）
-- [ ] 三仓并集正确，Sim 配置不误删 Synapse 子项（E10）
+- [ ] 多 PR 歧义 failure（E6 / F2）
+- [ ] 关闭/退出 cancelled（E9 / F5 / F13）
+- [ ] 三仓并集正确，Sim 配置不误删 Synapse 子项（E10 / F12）
+- [ ] 可行性：P1–P5、F14/F15/F16、E2/E3/E5 真联调绿
 
 ## 10. 非目标（v1）
 
@@ -540,6 +548,7 @@ stateDiagram-v2
 | 确定性 joint_id 碰撞/分叉 | 先搜开放 Issue 再创建；ID 含排序后的 (repo,branch) |
 | 误连公司现网仓 | §0 硬约束；凭证与仓库白名单仅 `zhekui-hub/joint-ci-*` |
 | base tip 频繁变导致过度失效 | versions 是否纳入 base tip 可配置；默认仅参与 PR SHA + 显式依赖 tip |
+| **仅 fake 绿就上真网 / 宣称生产可行** | **必须过可行性门禁**（experiments §3.4 / §4）：P-* + 标 real 的 F/R + E2/E3/E5 真联调；禁止用 fake 全绿代替 |
 
 ## 12. 开放问题 — 协调者定案（实验环境）
 
@@ -554,7 +563,8 @@ stateDiagram-v2
 
 ## 附录 A. 与 prototype / 实验对照
 
-实验仓见 §0.1。本地改 `/workspace/joint-ci`，由协调者同步到 `joint-ci-lab`。
+实验仓见 §0.1。本地改 `/workspace/joint-ci`，由协调者同步到 `joint-ci-lab`。  
+证据边界见 [`experiments.md` §0](./experiments.md)：fake 证逻辑；真联调才证可行性。
 
 | 设计概念 | prototype | 实验 |
 |---|---|---|
