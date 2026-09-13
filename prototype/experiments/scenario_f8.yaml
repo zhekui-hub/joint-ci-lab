@@ -1,0 +1,32 @@
+id: F8
+name: repeated_event_dedup_three_repo
+steps:
+  - create_pr:
+      repo: driver
+      branch: feature/f8-driver
+      ready: true
+      schedule: false
+      body: CI_MODE=joint
+      remote_tests: [{id: multirepo_runtest, params: {profile: default}}]
+  - create_pr:
+      repo: synapse
+      branch: feature/f8-synapse
+      ready: true
+      schedule: false
+      body: |
+        CI_MODE=joint
+        DLC_KERNEL_DRIVER_BRANCH=feature/f8-driver
+      remote_tests: [{id: multirepo_runtest, params: {profile: default}}]
+  - create_pr:
+      repo: sim
+      branch: feature/f8-sim
+      ready: true
+      schedule: false
+      body: |
+        CI_MODE=joint
+        DLC_KERNEL_DRIVER_BRANCH=feature/f8-driver
+      remote_tests: [{id: multirepo_runtest, params: {profile: default}}]
+  - schedule: {}
+  - schedule: {}
+  - schedule: {}
+  - assert: {joint_status: succeeded, dispatch_count: 1, public_runs: {multirepo_runtest: 1}}

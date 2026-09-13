@@ -33,6 +33,17 @@ def _driver(branch="feature/e2-driver", sha="driver-bbb", pr=100, draft=False):
             ]}
 
 
+def _sim(branch="feature/e2-sim", sha="sim-ccc", pr=200):
+    return {"schema_version": 1, "repo": "sim", "pr_number": pr,
+            "branch": branch, "head_sha": sha, "ci_mode": "joint",
+            "joint_wait": True, "deps": {"driver_branch": "feature/e2-driver"},
+            "is_draft": False,
+            "remote_tests": [
+                {"id": "multirepo_runtest", "params": {"profile": "default"}},
+                {"id": "arc_multirepo", "params": {"enable_abs_unit": False}},
+            ]}
+
+
 class SchedulerTests(unittest.TestCase):
     def test_e2_waiting_deps_no_dispatch(self):
         gh = FakeGhClient()
@@ -147,6 +158,65 @@ class SchedulerTests(unittest.TestCase):
         state = run([report], gh=gh)
         self.assertEqual(state.status, "skipped_non_joint")
         self.assertEqual(gh.dispatch_count(), 0)
+
+    def test_three_repo_union_dedupes_common_and_keeps_distinct_public(self):
+        gh = FakeGhClient()
+        syn = _synapse_wait()
+        drv = _driver()
+        sim = _sim()
+        gh.add_pr(drv); gh.add_pr(syn); gh.add_pr(sim)
+        state = run([syn, drv, sim], joint_id="joint-f10", gh=gh)
+        self.assertEqual(state.status, "succeeded")
+        self.assertEqual(gh.public_runs(), {"multirepo_runtest": 1, "arc_multirepo": 1})
+        self.assertEqual(gh.dispatch_count(), 2)
+        self.assertEqual({r["repo"] for r in state.participants}, {"driver", "synapse", "sim"})
+
+    def test_three_repo_public_failure_broadcasts_to_all(self):
+        gh = FakeGhClient()
+        gh.inject_failure("arc_multirepo", {"enable_abs_unit": False})
+        syn = _synapse_wait(); drv = _driver(); sim = _sim()
+        gh.add_pr(drv); gh.add_pr(syn); gh.add_pr(sim)
+        state = run([syn, drv, sim], joint_id="joint-f11", gh=gh)
+        self.assertEqual(state.status, "failed")
+        for report in (syn, drv, sim):
+            self.assertEqual(gh.check_conclusion(report["repo"], report["head_sha"]), "failure")
+
+    def test_three_repo_private_failure_is_not_dispatched(self):
+        gh = FakeGhClient(); gh.inject_failure("pseudo", {"cards": 16})
+        syn = _synapse_wait(); drv = _driver(); sim = _sim()
+        gh.add_pr(drv); gh.add_pr(syn); gh.add_pr(sim)
+        state = run([syn, drv, sim], joint_id="joint-f12", gh=gh)
+        self.assertEqual(state.status, "succeeded")
+        self.assertNotIn("pseudo", {d["test_id"] for d in gh.dispatches})
+
+    def test_check_write_failure_blocks_joint_success(self):
+        gh = FakeGhClient(); gh.inject_check_write_failure("sim")
+        syn = _synapse_wait(); drv = _driver(); sim = _sim()
+        gh.add_pr(drv); gh.add_pr(syn); gh.add_pr(sim)
+        state = run([syn, drv, sim], joint_id="joint-f13", gh=gh)
+        self.assertEqual(state.status, "failed")
+        self.assertEqual(state.failure_reason, "check_write_failed")
+        self.assertTrue(state.check_errors)
+
+    def test_running_result_recovers_without_duplicate_dispatch(self):
+        gh = FakeGhClient(); gh.set_defer_conclusions(True)
+        syn = _synapse_wait(); drv = _driver(); gh.add_pr(drv); gh.add_pr(syn)
+        first = run([syn, drv], joint_id="joint-f14", gh=gh)
+        self.assertEqual(first.status, "running")
+        run_id = next(iter(first.workflow_runs.values()))
+        gh.set_run_conclusion(run_id, "success")
+        second = run([syn, drv], joint_id="joint-f14", gh=gh, prior_state=first)
+        self.assertEqual(second.status, "succeeded")
+        self.assertEqual(gh.dispatch_count(), 1)
+
+    def test_invalidation_cancels_running_public_runs(self):
+        gh = FakeGhClient(); gh.set_defer_conclusions(True)
+        syn = _synapse_wait(); drv = _driver(); gh.add_pr(drv); gh.add_pr(syn)
+        state = run([syn, drv], joint_id="joint-f15", gh=gh)
+        run_id = next(iter(state.workflow_runs.values()))
+        invalidate(state, gh, reason="push")
+        self.assertEqual(state.status, "invalidated")
+        self.assertIn(run_id, gh.cancelled_runs)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,38 @@
+id: F9
+name: three_repo_push_invalidation
+steps:
+  - create_pr:
+      repo: driver
+      branch: feature/f9-driver
+      ready: true
+      schedule: false
+      head_sha: driver-f9-a
+      body: CI_MODE=joint
+      remote_tests: [{id: multirepo_runtest, params: {profile: default}}]
+  - create_pr:
+      repo: synapse
+      branch: feature/f9-synapse
+      ready: true
+      schedule: false
+      head_sha: synapse-f9-a
+      body: |
+        CI_MODE=joint
+        DLC_KERNEL_DRIVER_BRANCH=feature/f9-driver
+      remote_tests: [{id: multirepo_runtest, params: {profile: default}}]
+  - create_pr:
+      repo: sim
+      branch: feature/f9-sim
+      ready: true
+      schedule: false
+      head_sha: sim-f9-a
+      body: |
+        CI_MODE=joint
+        DLC_KERNEL_DRIVER_BRANCH=feature/f9-driver
+      remote_tests: [{id: arc_multirepo, params: {enable_abs_unit: false}}]
+  - schedule: {}
+  - push: {repo: sim, new_sha: sim-f9-b}
+  - assert:
+      joint_status: succeeded
+      joint_key_changed: true
+      public_runs_total: {multirepo_runtest: 2, arc_multirepo: 2}
+      checks: {driver: success, synapse: success, sim: success}

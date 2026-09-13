@@ -1,0 +1,33 @@
+id: F10
+name: three_repo_draft_gate
+steps:
+  - create_pr:
+      repo: driver
+      branch: feature/f10-driver
+      ready: false
+      is_draft: true
+      schedule: false
+      body: CI_MODE=joint
+      remote_tests: [{id: multirepo_runtest, params: {profile: default}}]
+  - create_pr:
+      repo: synapse
+      branch: feature/f10-synapse
+      ready: true
+      schedule: false
+      body: |
+        CI_MODE=joint
+        DLC_KERNEL_DRIVER_BRANCH=feature/f10-driver
+      remote_tests: [{id: multirepo_runtest, params: {profile: default}}]
+  - create_pr:
+      repo: sim
+      branch: feature/f10-sim
+      ready: true
+      schedule: false
+      body: |
+        CI_MODE=joint
+        DLC_KERNEL_DRIVER_BRANCH=feature/f10-driver
+      remote_tests: [{id: arc_multirepo, params: {enable_abs_unit: false}}]
+  - schedule: {}
+  - assert: {joint_status: waiting_deps, dispatch_count: 0}
+  - ready: {repo: driver}
+  - assert: {joint_status: succeeded, dispatch_count: 2}
