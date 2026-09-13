@@ -11,7 +11,7 @@ permissions:
 
 defaults:
   run:
-    shell: 'C:/Program Files/Git/bin/bash.exe --noprofile --norc -eo pipefail {0}'
+    shell: pwsh
 
 jobs:
   unit:
@@ -22,16 +22,16 @@ jobs:
       - name: Setup venv
         run: |
           python -m venv .venv
-          .venv/Scripts/python.exe -m pip install -U pip
-          .venv/Scripts/python.exe -m pip install -r prototype/requirements.txt
+          & .venv/Scripts/python.exe -m pip install -U pip
+          & .venv/Scripts/python.exe -m pip install -r prototype/requirements.txt
       - name: joint_key unit
         working-directory: prototype/shared
-        run: ../../.venv/Scripts/python.exe -m unittest test_joint_key.py -v
+        run: '& ../../.venv/Scripts/python.exe -m unittest test_joint_key.py -v'
       - name: scheduler unit
         working-directory: prototype/arsenal
         env:
           PYTHONPATH: ../shared:.
-        run: ../../.venv/Scripts/python.exe -m unittest test_scheduler.py -v
+        run: '& ../../.venv/Scripts/python.exe -m unittest test_scheduler.py -v'
 
   experiments:
     name: e1-e10-local
@@ -42,11 +42,11 @@ jobs:
       - name: Setup venv
         run: |
           python -m venv .venv
-          .venv/Scripts/python.exe -m pip install -U pip
-          .venv/Scripts/python.exe -m pip install -r prototype/requirements.txt
+          & .venv/Scripts/python.exe -m pip install -U pip
+          & .venv/Scripts/python.exe -m pip install -r prototype/requirements.txt
       - name: Run E1-E10 and enforce gate
         working-directory: prototype/experiments
         run: |
-          ../../.venv/Scripts/python.exe run_local.py scenario_e1.yaml scenario_e2.yaml scenario_e3.yaml scenario_e4.yaml scenario_e5.yaml scenario_e6.yaml scenario_e7.yaml scenario_e8.yaml scenario_e9.yaml scenario_e10.yaml --json | tee results.json
-          ../../.venv/Scripts/python.exe -c "import json,sys; data=json.load(open('results.json')); assert isinstance(data,list),type(data); failed=[r for r in data if str(r.get('result','')).upper()!='PASS']; print('FAILED:',[(f.get('id'),f.get('reason')) for f in failed]) if failed else None; sys.exit(1 if failed or len(data)<10 else 0)"
+          & ../../.venv/Scripts/python.exe run_local.py scenario_e1.yaml scenario_e2.yaml scenario_e3.yaml scenario_e4.yaml scenario_e5.yaml scenario_e6.yaml scenario_e7.yaml scenario_e8.yaml scenario_e9.yaml scenario_e10.yaml --json | Tee-Object results.json
+          & ../../.venv/Scripts/python.exe -c "import json,sys; data=json.load(open('results.json')); assert isinstance(data,list),type(data); failed=[r for r in data if str(r.get('result','')).upper()!='PASS']; print('FAILED:',[(f.get('id'),f.get('reason')) for f in failed]) if failed else None; sys.exit(1 if failed or len(data)<10 else 0)"
 
