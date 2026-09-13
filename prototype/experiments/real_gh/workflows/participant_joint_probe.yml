@@ -21,9 +21,13 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   echo-inputs:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows, X64, local-ci]
     steps:
       - name: Assert explicit SHA inputs
         env:

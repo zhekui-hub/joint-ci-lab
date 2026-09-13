@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   schedule:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows, X64, local-ci]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

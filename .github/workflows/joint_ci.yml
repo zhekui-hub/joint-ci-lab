@@ -1,6 +1,6 @@
 # 迁入 Arsenal / joint-ci-lab: .github/workflows/joint_ci.yml
 # 目标：event → scheduler（waiting 不占机）→ ready 后显式 SHA 派发；默认可 dry-run。
-# Self-hosted grok-box: no actions/setup-python (fails on this runner) — use python3 venv.
+# Local Windows self-hosted runner: use Git Bash and a repository venv.
 name: joint-ci
 on:
   workflow_dispatch:
@@ -27,22 +27,26 @@ permissions:
   actions: write
   pull-requests: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   schedule:
-    runs-on: [self-hosted, Linux, X64, grok-box]
+    runs-on: [self-hosted, Windows, X64, local-ci]
     steps:
       - uses: actions/checkout@v4
       - name: Install deps (python3 venv)
         run: |
           set -euo pipefail
-          python3 -m venv .venv
-          .venv/bin/python -m pip install --upgrade pip
+          python -m venv .venv
+          .venv/Scripts/python.exe -m pip install --upgrade pip
           if [ -f joint_ci/requirements.txt ]; then
-            .venv/bin/pip install -r joint_ci/requirements.txt
+            .venv/Scripts/python.exe -m pip install -r joint_ci/requirements.txt
           elif [ -f prototype/requirements.txt ]; then
-            .venv/bin/pip install -r prototype/requirements.txt
+            .venv/Scripts/python.exe -m pip install -r prototype/requirements.txt
           else
-            .venv/bin/pip install PyYAML
+            .venv/Scripts/python.exe -m pip install PyYAML
           fi
       - name: Run joint scheduler
         env:
@@ -61,9 +65,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ -f joint_ci/scheduler.py ]; then
-            .venv/bin/python joint_ci/scheduler.py
+            .venv/Scripts/python.exe joint_ci/scheduler.py
           elif [ -f prototype/arsenal/scheduler.py ]; then
-            PYTHONPATH=prototype/shared:prototype/arsenal .venv/bin/python prototype/arsenal/scheduler.py
+            PYTHONPATH=prototype/shared:prototype/arsenal .venv/Scripts/python.exe prototype/arsenal/scheduler.py
           else
             echo "scheduler.py not found" >&2
             exit 1

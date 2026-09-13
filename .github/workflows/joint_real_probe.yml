@@ -13,9 +13,13 @@ on:
         type: string
 permissions:
   contents: read
+
+defaults:
+  run:
+    shell: bash
 jobs:
   validate-inputs:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows, X64, local-ci]
     steps:
       - name: Validate explicit participant SHAs
         env:
