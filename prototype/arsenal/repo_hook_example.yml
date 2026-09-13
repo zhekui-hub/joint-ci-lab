@@ -1,23 +1,74 @@
-# 示例：放到 Synapse/Driver/Sim 的 .github/workflows/joint_ci_hook.yml
+# 放到 joint-ci-synapse / joint-ci-driver / joint-ci-sim: .github/workflows/joint_ci_hook.yml
+# 轻量入口：解析 CI_MODE/deps → repository_dispatch 到 lab（不跑重测试，等待不占机）
 name: joint-ci-hook
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, edited]
-  issue_comment:
-    types: [created]
+  workflow_dispatch: {}
 
 jobs:
   report:
-    if: github.event.pull_request != null || startsWith(github.event.comment.body, '/joint-ci')
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request != null
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build report & dispatch Arsenal
+      - name: Build report & dispatch lab
         env:
           GH_TOKEN: ${{ secrets.JOINT_CI_DISPATCH_TOKEN }}
+          LAB_OWNER: zhekui-hub
+          LAB_REPO: joint-ci-lab
         run: |
-          # 1) parse PR body for CI_MODE / deps
-          # 2) run determine_workflows_*.sh → remote_tests JSON
-          # 3) if CI_MODE!=joint: exit 0 (normal router handles)
-          # 4) repository_dispatch to Arsenal joint_ci_report
-          echo "see prototype/shared/joint_schema.md"
+          set -euo pipefail
+          BODY="${{ github.event.pull_request.body || '' }}"
+          CI_MODE=$(echo "$BODY" | sed -n 's/^CI_MODE=//p' | head -1 | tr -d '\r')
+          CI_MODE=${CI_MODE:-normal}
+          if [ "$CI_MODE" != "joint" ]; then
+            echo "ci_mode=$CI_MODE — skip joint dispatch"
+            exit 0
+          fi
+          JOINT_WAIT=$(echo "$BODY" | sed -n 's/^JOINT_WAIT=//p' | head -1 | tr -d '\r' | tr 'A-Z' 'a-z')
+          DRIVER_BRANCH=$(echo "$BODY" | sed -n 's/^DLC_KERNEL_DRIVER_BRANCH=//p' | head -1 | tr -d '\r')
+          SIM_BRANCH=$(echo "$BODY" | sed -n 's/^DLC_SIM_BRANCH=//p' | head -1 | tr -d '\r')
+          REPO_NAME="${{ github.event.repository.name }}"
+          # map joint-ci-synapse → synapse
+          SHORT=$(echo "$REPO_NAME" | sed 's/^joint-ci-//')
+          IS_DRAFT="${{ github.event.pull_request.draft || false }}"
+          # Minimal remote_tests for E2/E3 public dedupe probe
+          REPORT=$(jq -nc \
+            --arg repo "$SHORT" \
+            --argjson pr ${{ github.event.pull_request.number || 0 }} \
+            --arg sha "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --arg branch "${{ github.event.pull_request.head.ref || github.ref_name }}" \
+            --arg ci_mode "$CI_MODE" \
+            --argjson joint_wait "$( [ "$JOINT_WAIT" = "true" ] || [ "$JOINT_WAIT" = "1" ] && echo true || echo false )" \
+            --argjson is_draft "$IS_DRAFT" \
+            --arg driver "$DRIVER_BRANCH" \
+            --arg sim "$SIM_BRANCH" \
+            '{
+              schema_version:1,
+              repo:$repo,
+              pr_number:$pr,
+              head_sha:$sha,
+              branch:$branch,
+              ci_mode:$ci_mode,
+              joint_wait:$joint_wait,
+              is_draft:$is_draft,
+              deps:{driver_branch:( $driver | select(length>0) ), sim_branch:( $sim | select(length>0) )},
+              remote_tests:[
+                {id:"multirepo_runtest", params:{profile:"default"}}
+              ]
+            }')
+          # Drop empty dep keys
+          REPORT=$(echo "$REPORT" | jq 'if .deps.driver_branch==null then del(.deps.driver_branch) else . end
+            | if .deps.sim_branch==null then del(.deps.sim_branch) else . end')
+          echo "report=$REPORT"
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "JOINT_CI_DISPATCH_TOKEN missing — print only"
+            exit 0
+          fi
+          jq -nc --argjson report "$REPORT" '{event_type:"joint_ci_report", client_payload:{reports:[$report], joint_id:("joint-auto-"+($report.repo)+"-"+($report.pr_number|tostring))}}' \
+            | curl -fsS -X POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/${LAB_OWNER}/${LAB_REPO}/dispatches" \
+              -d @-

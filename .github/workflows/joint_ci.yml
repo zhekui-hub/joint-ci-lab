@@ -1,0 +1,70 @@
+# 迁入 Arsenal / joint-ci-lab: .github/workflows/joint_ci.yml
+# 目标：event → scheduler（waiting 不占机）→ ready 后显式 SHA 派发；默认可 dry-run。
+# Self-hosted grok-box: no actions/setup-python (fails on this runner) — use python3 venv.
+name: joint-ci
+on:
+  workflow_dispatch:
+    inputs:
+      report_json:
+        description: JSON array of per-repo reports (or {"reports":[...],"joint_id":"..."})
+        required: true
+      joint_id:
+        description: Existing joint id to resume (optional)
+        required: false
+        default: ""
+      dry_run:
+        description: "1=dry-run Fake; 0=live GitHub"
+        required: false
+        default: "0"
+  repository_dispatch:
+    types: [joint_ci_report]
+
+permissions:
+  contents: read
+  issues: write
+  checks: write
+  statuses: write
+  actions: write
+  pull-requests: read
+
+jobs:
+  schedule:
+    runs-on: [self-hosted, Linux, X64, grok-box]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps (python3 venv)
+        run: |
+          set -euo pipefail
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          if [ -f joint_ci/requirements.txt ]; then
+            .venv/bin/pip install -r joint_ci/requirements.txt
+          elif [ -f prototype/requirements.txt ]; then
+            .venv/bin/pip install -r prototype/requirements.txt
+          else
+            .venv/bin/pip install PyYAML
+          fi
+      - name: Run joint scheduler
+        env:
+          GITHUB_TOKEN: ${{ secrets.JOINT_GH_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.JOINT_GH_TOKEN || secrets.GITHUB_TOKEN }}
+          JOINT_GH_TOKEN: ${{ secrets.JOINT_GH_TOKEN || secrets.GITHUB_TOKEN }}
+          JOINT_APP_PEM: ${{ secrets.JOINT_CI_APP_PEM }}
+          JOINT_APP_ID: ${{ secrets.JOINT_CI_APP_ID }}
+          JOINT_OWNER: zhekui-hub
+          JOINT_LAB_REPO: joint-ci-lab
+          REPORT_JSON: ${{ github.event.inputs.report_json || toJson(github.event.client_payload) }}
+          JOINT_ID: ${{ github.event.inputs.joint_id || github.event.client_payload.joint_id || '' }}
+          JOINT_DRY_RUN: ${{ github.event.inputs.dry_run || vars.JOINT_DRY_RUN || '0' }}
+          # P1: PAT without checks:write → RealGhClient falls back to commit status
+          JOINT_STATUS_FALLBACK: "1"
+        run: |
+          set -euo pipefail
+          if [ -f joint_ci/scheduler.py ]; then
+            .venv/bin/python joint_ci/scheduler.py
+          elif [ -f prototype/arsenal/scheduler.py ]; then
+            PYTHONPATH=prototype/shared:prototype/arsenal .venv/bin/python prototype/arsenal/scheduler.py
+          else
+            echo "scheduler.py not found" >&2
+            exit 1
+          fi
