@@ -1,0 +1,45 @@
+name: joint-ready-soft-check
+
+# Soft gate for mock participant repos / future PR integration.
+# Writes a commit status named "joint-ci" via workflow conclusion.
+# Hard branch protection is unavailable on free private repos.
+
+on:
+  workflow_dispatch:
+    inputs:
+      conclusion:
+        description: "success | failure | pending"
+        required: true
+        default: "success"
+      sha:
+        description: "commit sha to annotate (optional; default head)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  statuses: write
+  checks: write
+
+jobs:
+  annotate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish joint-ci status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONCLUSION: ${{ inputs.conclusion }}
+          SHA: ${{ inputs.sha || github.sha }}
+        run: |
+          case "$CONCLUSION" in
+            success) state=success ;;
+            failure) state=failure ;;
+            pending) state=pending ;;
+            *) state=failure ;;
+          esac
+          gh api -X POST "repos/${{ github.repository }}/statuses/$SHA" \
+            -f state="$state" \
+            -f context="joint-ci" \
+            -f description="Joint CI soft gate ($CONCLUSION)" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

@@ -575,3 +575,11 @@ stateDiagram-v2
 | consumers | 合并测试结果要回写到的 PR 列表 |
 | exclusive_to | 专属某仓的测试标记 |
 | waiting_deps | 依赖未齐或 Draft 中的 Issue 状态 |
+
+## 13. 门禁（实验仓）
+
+详见 [`gates.md`](./gates.md)。
+
+- **软门禁**：`joint-ci-lab` 的 Actions `joint-ci-gate`（unit + E1–E10）必须绿
+- **硬门禁**：免费私有仓不可用 Branch protection；需 public 或 GitHub Pro 后再把 `unit-tests` / `e1-e10-local` 设为 required
+
