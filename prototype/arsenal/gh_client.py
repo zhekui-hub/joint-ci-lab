@@ -618,13 +618,7 @@ class RealGhClient(GhClient):
         short = self._short_repo(repo)
         # head filter: owner:branch
         data = self.gh_api(
-            f"repos/{full}/pulls",
-            "-f",
-            "state=open",
-            "-f",
-            f"head={self.OWNER}:{branch}",
-            "-f",
-            "per_page=100",
+            f"repos/{full}/pulls?state=open&head={self.OWNER}:{branch}&per_page=100",
         )
         items = data if isinstance(data, list) else []
         # Scheduler reports use role names ("driver"); map short → role
@@ -732,13 +726,7 @@ class RealGhClient(GhClient):
         joint_id = str(joint_id_or_number)
         # Search open + closed labeled issues (paginate lightly)
         data = self.gh_api(
-            f"repos/{lab}/issues",
-            "-f",
-            f"labels={self.LABEL}",
-            "-f",
-            "state=all",
-            "-f",
-            "per_page=100",
+            f"repos/{lab}/issues?labels={self.LABEL}&state=all&per_page=100",
         )
         items = data if isinstance(data, list) else []
         for issue in items:
