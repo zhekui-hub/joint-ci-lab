@@ -23,7 +23,7 @@ permissions:
 
 defaults:
   run:
-    shell: bash
+    shell: 'C:/Program Files/Git/bin/bash.exe --noprofile --norc -eo pipefail {0}'
 
 jobs:
   annotate:
