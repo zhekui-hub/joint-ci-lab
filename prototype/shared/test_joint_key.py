@@ -1,11 +1,14 @@
 import unittest
 from joint_key import (
     make_joint_key,
+    make_joint_run_key,
     merge_remote_tests,
     per_pr_required,
     hash_merged_tests,
     test_config_hash,
     workflow_key,
+    requested_tests,
+    is_public_test,
 )
 
 
@@ -22,7 +25,16 @@ class JointKeyTests(unittest.TestCase):
         b = make_joint_key({"driver": "aaa", "synapse": "BBB"}, "img", "cfg")
         self.assertNotEqual(a, b)
 
-    def test_merge_dedupes_identical(self):
+    def test_joint_run_key_includes_joint_id_and_sha(self):
+        v = {"driver": "aaa", "synapse": "bbb"}
+        a = make_joint_run_key("joint-1", v, "img", "cfg")
+        b = make_joint_run_key("joint-2", v, "img", "cfg")
+        c = make_joint_run_key("joint-1", {"driver": "aaa", "synapse": "BBB"}, "img", "cfg")
+        self.assertNotEqual(a, b)
+        self.assertNotEqual(a, c)
+        self.assertEqual(a, make_joint_run_key("joint-1", v, "img", "cfg"))
+
+    def test_merge_skips_exclusive_dedupes_public(self):
         reports = [
             {
                 "repo": "driver",
@@ -43,16 +55,27 @@ class JointKeyTests(unittest.TestCase):
         ]
         merged = merge_remote_tests(reports)
         ids = sorted((m["id"], m["params"].get("cards")) for m in merged)
-        self.assertEqual(
-            ids,
-            [
-                ("multirepo_runtest", None),
-                ("pseudo", 4),
-                ("pseudo", 16),
-            ],
-        )
+        self.assertEqual(ids, [("multirepo_runtest", None), ("pseudo", 4)])
         multi = next(m for m in merged if m["id"] == "multirepo_runtest")
         self.assertEqual(len(multi["consumers"]), 2)
+        self.assertTrue(all(m.get("exclusive_to") is None for m in merged))
+
+    def test_public_tests_requested_preferred(self):
+        report = {
+            "repo": "driver",
+            "pr_number": 1,
+            "public_tests_requested": [
+                {"id": "multirepo_runtest", "params": {"profile": "default"}},
+            ],
+            "remote_tests": [
+                {"id": "multirepo_runtest", "params": {"profile": "default"}},
+                {"id": "pseudo", "params": {"cards": 16}, "exclusive_to": "driver"},
+            ],
+        }
+        req = requested_tests(report)
+        self.assertEqual(len(req), 1)
+        self.assertEqual(req[0]["id"], "multirepo_runtest")
+        self.assertTrue(is_public_test(req[0]))
 
     def test_per_pr_required(self):
         report = {
@@ -67,7 +90,7 @@ class JointKeyTests(unittest.TestCase):
                 "pr_number": 1,
                 "remote_tests": [
                     {"id": "multirepo_runtest", "params": {"profile": "default"}},
-                    {"id": "pseudo", "params": {"cards": 16}},
+                    {"id": "pseudo", "params": {"cards": 16}, "exclusive_to": "driver"},
                 ],
             },
         ])
@@ -80,12 +103,11 @@ class JointKeyTests(unittest.TestCase):
             {"id": "multirepo_runtest", "params": {"profile": "default"}, "env": {}},
             {"id": "pseudo", "params": {"cards": 4}, "env": {}},
         ]
-        b = list(reversed(a))  # order should not matter
+        b = list(reversed(a))
         self.assertEqual(hash_merged_tests(a), hash_merged_tests(b))
         self.assertEqual(hash_merged_tests(a), test_config_hash(a))
         c = a + [{"id": "extra", "params": {}, "env": {}}]
         self.assertNotEqual(hash_merged_tests(a), hash_merged_tests(c))
-        # Not based on len alone: different content same length → different hash
         d = [
             {"id": "multirepo_runtest", "params": {"profile": "other"}, "env": {}},
             {"id": "pseudo", "params": {"cards": 4}, "env": {}},
