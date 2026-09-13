@@ -1,0 +1,33 @@
+id: F5
+name: same_test_different_parameters
+steps:
+  - create_pr:
+      repo: driver
+      branch: feature/f5-driver
+      ready: true
+      schedule: false
+      body: CI_MODE=joint
+      remote_tests: [{id: multirepo_runtest, params: {profile: default}}]
+  - create_pr:
+      repo: synapse
+      branch: feature/f5-synapse
+      ready: true
+      schedule: false
+      body: |
+        CI_MODE=joint
+        DLC_KERNEL_DRIVER_BRANCH=feature/f5-driver
+      remote_tests: [{id: multirepo_runtest, params: {profile: minimal}}]
+  - create_pr:
+      repo: sim
+      branch: feature/f5-sim
+      ready: true
+      schedule: false
+      body: |
+        CI_MODE=joint
+        DLC_KERNEL_DRIVER_BRANCH=feature/f5-driver
+      remote_tests: [{id: multirepo_runtest, params: {profile: default}}]
+  - schedule: {}
+  - assert:
+      joint_status: succeeded
+      dispatch_count: 2
+      public_runs: {multirepo_runtest: 2}

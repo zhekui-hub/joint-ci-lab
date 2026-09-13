@@ -1,0 +1,34 @@
+id: F7
+name: private_only_no_public_dispatch
+steps:
+  - create_pr:
+      repo: driver
+      branch: feature/f7-driver
+      ready: true
+      schedule: false
+      body: CI_MODE=joint
+      remote_tests: [{id: pseudo, params: {cards: 16}, exclusive_to: driver}]
+  - create_pr:
+      repo: synapse
+      branch: feature/f7-synapse
+      ready: true
+      schedule: false
+      body: |
+        CI_MODE=joint
+        DLC_KERNEL_DRIVER_BRANCH=feature/f7-driver
+      remote_tests: [{id: pseudo, params: {cards: 4}, exclusive_to: synapse}]
+  - create_pr:
+      repo: sim
+      branch: feature/f7-sim
+      ready: true
+      schedule: false
+      body: |
+        CI_MODE=joint
+        DLC_KERNEL_DRIVER_BRANCH=feature/f7-driver
+      remote_tests: [{id: sim_private, params: {profile: default}, exclusive_to: sim}]
+  - schedule: {}
+  - assert:
+      joint_status: succeeded
+      dispatch_count: 0
+      public_runs: {}
+      checks: {driver: success, synapse: success, sim: success}

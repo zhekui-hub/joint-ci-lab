@@ -1,0 +1,34 @@
+id: F3
+name: three_repo_public_failure_broadcast
+steps:
+  - inject_failure: {test_id: arc_multirepo, params: {enable_abs_unit: false}}
+  - create_pr:
+      repo: driver
+      branch: feature/f3-driver
+      ready: true
+      schedule: false
+      body: CI_MODE=joint
+      remote_tests: [{id: multirepo_runtest, params: {profile: default}}]
+  - create_pr:
+      repo: synapse
+      branch: feature/f3-synapse
+      ready: true
+      schedule: false
+      body: |
+        CI_MODE=joint
+        DLC_KERNEL_DRIVER_BRANCH=feature/f3-driver
+      remote_tests: [{id: multirepo_runtest, params: {profile: default}}]
+  - create_pr:
+      repo: sim
+      branch: feature/f3-sim
+      ready: true
+      schedule: false
+      body: |
+        CI_MODE=joint
+        DLC_KERNEL_DRIVER_BRANCH=feature/f3-driver
+      remote_tests: [{id: arc_multirepo, params: {enable_abs_unit: false}}]
+  - schedule: {}
+  - assert:
+      joint_status: failed
+      dispatch_count: 2
+      checks: {driver: failure, synapse: failure, sim: failure}

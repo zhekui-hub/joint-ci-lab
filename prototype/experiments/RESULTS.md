@@ -44,6 +44,31 @@ Supporting code:
 
 **Score: 10/10 PASS**
 
+## Expanded matrix F1–F10
+
+The expanded fake-backend matrix exercises three participants, public/private
+test boundaries, failure propagation, parameter-sensitive dedupe, repeated
+events, SHA invalidation, draft gating, and mutual dependency declarations.
+
+| ID | Result | Coverage |
+|---|---|---|
+| F1 | **PASS** | Driver + Synapse + Sim public union; common test once, distinct tests once |
+| F2 | **PASS** | Three-repo staggered arrival; no dispatch while Driver is missing |
+| F3 | **PASS** | Public failure broadcast to all three participant checks |
+| F4 | **PASS** | Driver private failure is excluded from Arsenal and does not fail peers |
+| F5 | **PASS** | Same test ID with different parameters dispatches twice |
+| F6 | **PASS** | Mutual dependency declarations are treated as association, not deadlock |
+| F7 | **PASS** | Private-only participants produce no Arsenal public run |
+| F8 | **PASS** | Repeated scheduler events do not duplicate a public run |
+| F9 | **PASS** | Sim SHA change invalidates the three-repo result and reruns public tests |
+| F10 | **PASS** | Three-repo Draft gate holds all heavy tests until Ready |
+
+**Expanded score: 10/10 PASS; total scenario score: 21/21 PASS.**
+
+Additional scheduler unit coverage now includes 17 tests for three-repo union,
+public failure fan-out, private failure isolation, check-write failure,
+running-run recovery, cancellation, SHA reuse protection, and invalidation.
+
 ### Post-migration regression (experiment agent re-run)
 - `shared` unittest: **6/6 OK**
 - `arsenal` unittest: **9/9 OK**

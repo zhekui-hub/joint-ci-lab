@@ -2,7 +2,7 @@
 """Local Joint CI experiment runner against FakeGhClient (no real GitHub).
 
 Usage:
-  python run_local.py                     # run all scenario_e*.yaml
+  python run_local.py                     # run all scenario_*.yaml
   python run_local.py scenario_e2.yaml    # run one / many paths
   python run_local.py --list
 """
@@ -343,7 +343,7 @@ def run_scenario(path: str) -> Dict[str, Any]:
 
 
 def discover_scenarios(root: str) -> List[str]:
-    return sorted(glob.glob(os.path.join(root, "scenario_e*.yaml")))
+    return sorted(glob.glob(os.path.join(root, "scenario_*.yaml")))
 
 
 def main(argv: Optional[List[str]] = None) -> int:

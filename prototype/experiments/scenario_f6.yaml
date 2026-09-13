@@ -1,0 +1,22 @@
+id: F6
+name: mutual_dependency_declarations_are_association
+steps:
+  - create_pr:
+      repo: driver
+      branch: feature/f6-driver
+      ready: true
+      schedule: false
+      ci_mode: joint
+      deps: {synapse_branch: feature/f6-synapse}
+      remote_tests: [{id: multirepo_runtest, params: {profile: default}}]
+  - create_pr:
+      repo: synapse
+      branch: feature/f6-synapse
+      ready: true
+      schedule: false
+      ci_mode: joint
+      deps: {driver_branch: feature/f6-driver}
+      remote_tests: [{id: multirepo_runtest, params: {profile: default}}]
+  - schedule: {}
+  - assert: {joint_status: succeeded, dispatch_count: 1, public_runs: {multirepo_runtest: 1}}
+
