@@ -858,35 +858,39 @@ class RealGhClient(GhClient):
             raise RealGhError("dispatch_test: missing driver/synapse/sim SHAs in versions")
 
         before = self.gh_api(
-            f"repos/{lab}/actions/workflows/{workflow}/runs",
-            "-f",
-            "per_page=20",
+            f"repos/{lab}/actions/workflows/{workflow}/runs?per_page=20",
         ) or {}
         old_ids = {
             str(r.get("id") or r.get("database_id"))
             for r in (before.get("workflow_runs") or [] if isinstance(before, dict) else [])
         }
 
-        self.gh_api(
-            f"repos/{lab}/actions/workflows/{workflow}/dispatches",
-            "-f",
-            "ref=main",
+        # Prefer `gh workflow run` so inputs are nested correctly (top-level -f driver_sha → 422).
+        cmd = [
+            "gh",
+            "workflow",
+            "run",
+            workflow,
+            "-R",
+            lab,
+            "--ref",
+            "main",
             "-f",
             f"driver_sha={driver_sha}",
             "-f",
             f"synapse_sha={synapse_sha}",
             "-f",
             f"sim_sha={sim_sha}",
-            method="POST",
-        )
+        ]
+        proc = self._run_gh(cmd, check=True)
+        if proc.returncode:
+            raise RealGhError(f"gh workflow run {workflow} failed")
 
         timeout = int(os.environ.get("JOINT_RUN_WAIT_SECONDS", "90"))
         deadline = time.monotonic() + max(5, timeout)
         while time.monotonic() <= deadline:
             runs = self.gh_api(
-                f"repos/{lab}/actions/workflows/{workflow}/runs",
-                "-f",
-                "per_page=10",
+                f"repos/{lab}/actions/workflows/{workflow}/runs?per_page=10",
             ) or {}
             items = runs.get("workflow_runs") or [] if isinstance(runs, dict) else []
             fresh = [
@@ -908,23 +912,30 @@ class RealGhClient(GhClient):
         if str(run_id).startswith(("dry-", "fake-")):
             return "success"
         lab = self._lab()
-        data = self.gh_api(f"repos/{lab}/actions/runs/{run_id}")
-        if not isinstance(data, dict):
-            return "failure"
-        status = (data.get("status") or "").lower()
-        conclusion = (data.get("conclusion") or "").lower()
-        if status in ("queued", "in_progress", "waiting", "requested", "pending"):
-            return "pending"
-        if status == "completed":
+        poll = os.environ.get("JOINT_POLL_RUNS", "1") == "1"
+        timeout = int(os.environ.get("JOINT_RUN_WAIT_SECONDS", "180"))
+        deadline = time.monotonic() + (timeout if poll else 0)
+        while True:
+            data = self.gh_api(f"repos/{lab}/actions/runs/{run_id}")
+            if not isinstance(data, dict):
+                return "failure"
+            status = (data.get("status") or "").lower()
+            conclusion = (data.get("conclusion") or "").lower()
+            if status in ("queued", "in_progress", "waiting", "requested", "pending"):
+                if poll and time.monotonic() < deadline:
+                    time.sleep(3)
+                    continue
+                return "pending"
+            if status == "completed":
+                return "success" if conclusion == "success" else "failure"
             if conclusion == "success":
                 return "success"
-            return "failure"
-        # Unknown / incomplete
-        if conclusion == "success":
-            return "success"
-        if conclusion:
-            return "failure"
-        return "pending"
+            if conclusion:
+                return "failure"
+            if poll and time.monotonic() < deadline:
+                time.sleep(3)
+                continue
+            return "pending"
 
     def cancel_run(self, run_id: str) -> None:
         if not run_id or str(run_id).startswith(("dry-", "fake-")):
