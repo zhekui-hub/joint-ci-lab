@@ -778,6 +778,7 @@ def _run_locked(
             not skip_reuse
             and prior_state is not None
             and prior_state.status != "invalidated"
+            and getattr(prior_state, "joint_key", None) == state.joint_key
             and prior_state.workflow_runs
             and key in prior_state.workflow_runs
         ):
