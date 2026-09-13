@@ -1,0 +1,34 @@
+{
+  "joint_id": "joint-e2-synapse-1",
+  "reports": [
+    {
+      "schema_version": 1,
+      "repo": "synapse",
+      "pr_number": 1,
+      "branch": "exp/ci-e2-synapse",
+      "head_sha": "REPLACE_SYNAPSE_HEAD_SHA",
+      "ci_mode": "joint",
+      "joint_wait": true,
+      "is_draft": false,
+      "deps": { "driver_branch": "exp/ci-e2-driver" },
+      "remote_tests": [
+        { "id": "multirepo_runtest", "params": { "profile": "default" } }
+      ]
+    },
+    {
+      "schema_version": 1,
+      "repo": "driver",
+      "pr_number": 1,
+      "branch": "exp/ci-e2-driver",
+      "head_sha": "REPLACE_DRIVER_HEAD_SHA",
+      "ci_mode": "joint",
+      "joint_wait": false,
+      "is_draft": false,
+      "deps": {},
+      "remote_tests": [
+        { "id": "multirepo_runtest", "params": { "profile": "default" } },
+        { "id": "pseudo", "params": { "cards": 16 }, "exclusive_to": "driver" }
+      ]
+    }
+  ]
+}
