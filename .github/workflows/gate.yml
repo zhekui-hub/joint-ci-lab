@@ -12,39 +12,39 @@ permissions:
 jobs:
   unit:
     name: unit-tests
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, grok-box]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install deps
-        run: pip install -r prototype/requirements.txt
+      - name: Setup venv
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install -U pip
+          .venv/bin/pip install -r prototype/requirements.txt
       - name: joint_key unit
         working-directory: prototype/shared
-        run: python -m unittest test_joint_key.py -v
+        run: ../../.venv/bin/python -m unittest test_joint_key.py -v
       - name: scheduler unit
         working-directory: prototype/arsenal
         env:
           PYTHONPATH: ../shared:.
-        run: python -m unittest test_scheduler.py -v
+        run: ../../.venv/bin/python -m unittest test_scheduler.py -v
 
   experiments:
     name: e1-e10-local
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, grok-box]
     needs: unit
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install deps
-        run: pip install -r prototype/requirements.txt
+      - name: Setup venv
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install -U pip
+          .venv/bin/pip install -r prototype/requirements.txt
       - name: Run E1-E10 and enforce gate
         working-directory: prototype/experiments
         run: |
-          python run_local.py --json | tee /tmp/results.json
-          python - <<'PY'
+          ../../.venv/bin/python run_local.py scenario_e1.yaml scenario_e2.yaml scenario_e3.yaml scenario_e4.yaml scenario_e5.yaml scenario_e6.yaml scenario_e7.yaml scenario_e8.yaml scenario_e9.yaml scenario_e10.yaml --json | tee /tmp/results.json
+          ../../.venv/bin/python - <<'PY'
           import json, sys
           data = json.load(open("/tmp/results.json"))
           assert isinstance(data, list), type(data)
@@ -55,5 +55,5 @@ jobs:
           if len(data) < 10:
               print(f"expected >=10 scenarios, got {len(data)}")
               sys.exit(1)
-          print(f"gate ok: {len(data)}/ {len(data)} PASS")
+          print(f"gate ok: {len(data)}/{len(data)} PASS")
           PY
