@@ -172,10 +172,10 @@
 
 ## 自动化实验脚手架（实现时一并交付）
 
-建议在 Arsenal 增加 `joint_ci/experiments/`：
+建议在 `joint-ci-lab`（实验 Arsenal）增加 `joint_ci/experiments/`：
 
 1. `scenario.yaml`：描述参与仓、分支名、标记、期望断言
-2. `run_experiment.sh`：用 GitHub App / `gh` 建分支与 PR、写 body、轮询 Check
+2. `run_experiment.sh`：优先 fake backend；真连时用 `gh`（仅 zhekui-hub/joint-ci-*）建分支与 PR、写 body、轮询 Check
 3. `assert.py`：断言 `public_runs`、Check 结论、Issue 状态机迁移
 4. CI 中的 `workflow_dispatch` 手工实验入口（仅维护者可跑）
 
@@ -193,7 +193,7 @@ assert check_state(synapse, "joint") == "success"
 
 与 `design.md` §9 一致：
 
-- P0：设计评审通过（含 Origin 边界与开放问题建议默认）
+- P0：设计评审通过（含 zhekui-hub/joint-ci-* 边界与 §12 定案）
 
 - P1：E2 人工过一遍（等待不占机）
 - P2：E3 + E4 必须自动化绿

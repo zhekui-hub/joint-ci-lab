@@ -10,8 +10,9 @@
 | 工作区 | 只改 `/workspace/joint-ci` 下文档与本地 prototype；本地稳定后由协调者同步推到 `joint-ci-lab`；**禁止**自行 `git push`、禁止改动或推送任何 ChipLTech/公司仓库 |
 | 代码改动面 | 当前阶段以文档 + prototype + mock 仓为准，**不改业务仓现网代码** |
 | 术语对齐 | 与 `experiments.md`、`prototype/shared/joint_schema.md`、`joint_key.py` 一致 |
+| 客户端 | **实验期默认 fake GhClient**（dry-run），暂不配真实 GitHub App；真连时只用下表 `zhekui-hub/joint-ci-*` 私有仓 |
 
-### 0.1 实验仓坐标（个人号 `zhekui-hub`，全私有）
+### 0.1 实验仓坐标（个人号 `zhekui-hub`，全私有，非公司仓）
 
 | 角色 | 仓库 | 对应现网概念 |
 |---|---|---|
@@ -20,7 +21,11 @@
 | Synapse mock | https://github.com/zhekui-hub/joint-ci-synapse | Synapse |
 | Sim mock | https://github.com/zhekui-hub/joint-ci-sim | Sim |
 
-约定：`report.repo` 在实验中取 `driver` / `synapse` / `sim`（或完整 `zhekui-hub/joint-ci-*`，实现与实验侧统一一种即可）；Joint Issue 默认落在 **joint-ci-lab**，label `joint-ci`。
+约定：
+- `report.repo` 实验中取 `driver` / `synapse` / `sim`（或完整 `zhekui-hub/joint-ci-*`，实现与实验侧统一一种）
+- Joint Issue 落在 **https://github.com/zhekui-hub/joint-ci-lab**，label `joint-ci`
+- 本地只改 `/workspace/joint-ci`；稳定后由协调者同步推到 `joint-ci-lab`
+- **禁止**碰 ChipLTech / 公司现网仓
 
 ## 1. 背景与问题
 
@@ -282,7 +287,7 @@ Synapse 合入 = Synapse 本地检查 + 其 required 远程测试（含公共 + 
 
 ## 6. 状态存储与 Issue 状态机（第一版）
 
-不新建数据库。Arsenal 仓库内每组联合任务对应一条机器人维护的 Issue（label 建议 `joint-ci`，见 §12）。
+不新建数据库。实验床 `joint-ci-lab`（对应 Arsenal）内每组联合任务对应一条机器人维护的 Issue（label `joint-ci`，见 §12）。
 
 ### 6.1 完整状态
 
@@ -442,7 +447,7 @@ stateDiagram-v2
 
 ## 8. 实现落点（代码改动面）
 
-> 提醒：实验阶段只在 Origin 私有仓与 `/workspace/joint-ci` 演进；迁入公司 Arsenal 前需协调者批准。
+> 提醒：实验阶段只在 `zhekui-hub/joint-ci-*` 与 `/workspace/joint-ci` 演进（默认 fake GhClient）；迁入公司 Arsenal 前需协调者批准。
 
 ### 8.1 各业务仓（Driver / Synapse / Sim）
 
@@ -476,7 +481,7 @@ stateDiagram-v2
 | 阶段 | 范围 | 交付物 | 成功标准 | 实验门禁 | 依赖 | 回滚 |
 |---|---|---|---|---|---|---|
 | **P0** 设计冻结 | 本文件 + 实验计划 | `docs/design.md`、`docs/experiments.md`、prototype 对齐说明 | 评审通过；开放问题有建议默认值 | 文档评审 | 无 | 仅文档，回滚=还原文档 |
-| **P1** 骨架 | Arsenal joint 入口 + Issue 状态机 + 假分发 | `joint_ci.yml`、scheduler dry-run、Issue frontmatter、Check pending 写回 | 完整走 `waiting_deps→ready→running→回写`；等待不占 Pod | **E2 人工过一遍** | P0；Origin 私有 Arsenal + App 只读/写测 | 关掉 joint 入口 workflow；PR 去掉 CI_MODE 即回单仓 |
+| **P1** 骨架 | Arsenal joint 入口 + Issue 状态机 + 假分发 | `joint_ci.yml`、scheduler dry-run、Issue frontmatter、Check pending 写回 | 完整走 `waiting_deps→ready→running→回写`；等待不占 Pod | **E2 人工过一遍** | P0；`joint-ci-lab` + fake GhClient（真连仅 zhekui-hub 白名单） | 关掉 joint 入口 workflow；PR 去掉 CI_MODE 即回单仓 |
 | **P2** 真实去重 | 接入 MultiRepo / Pseudo 显式 SHA | 真实 dispatch；`joint_key` 复用；按 PR 汇总 | Driver↔Synapse 联合只跑一份公共测试；专属隔离 | **E3+E4 自动化绿**；E1 回归 | P1；公共工作流接受显式 SHA | 回退为各仓自行触发重测；保留 Issue 但不派发 |
 | **P3** 自动关联 | 依赖字段自动匹配 + Ready 门闸 + 失效 | 匹配算法、Draft 门闸、invalidate 自动重跑 | 无需评论命令；错峰只跑一轮；push 后旧结果失效 | **E2+E5+E7 绿** | P2；字段解析与 PR 模板 | 关闭自动匹配，临时改手动指定 joint_id |
 | **P4** Sim + harden | 三仓并集、冲突/取消、硬化 | Sim 并入；歧义/关闭路径；实验脚手架 | 实验矩阵相关项全绿 | **E6+E9+E10 绿**；E1/E8 回归绿 | P3；Sim 仓 joint 上报 | 三仓开关分仓关闭；Sim 先退出联合 |
@@ -489,7 +494,7 @@ stateDiagram-v2
 
 - [ ] §4–§7 规则可实现，不依赖读代码猜语义
 - [ ] 与 experiments E1–E10 术语一致
-- [ ] 确认「仅 Origin 私有仓验证」写入约束
+- [x] 确认「仅 zhekui-hub/joint-ci-* 私有仓验证」写入 §0（协调者已定案）
 
 **P1**
 
@@ -530,20 +535,20 @@ stateDiagram-v2
 | 误把不同参数的同名测试去重 | 去重键含 params/env；versions/image 进 joint_key；`test_joint_key.py` 覆盖 |
 | 双边事件双派发 | joint_id 串行锁 + joint_key 复用/等待 |
 | Check 用 skipped 放行 | joint 模式下未完成一律 pending；失败用 failure |
-| App 权限不足跨仓写状态 | 安装同一 GitHub App 到实验用三仓+Arsenal（Origin 私有）；现网另行审批 |
+| App 权限不足跨仓写状态 | 实验期用 fake GhClient；真连时同一凭证仅绑 `zhekui-hub/joint-ci-*`；现网另行审批 |
 | 历史 PR 未声明联合已跑完 | 文档约定：跨仓改动先建 Draft 并声明 |
 | 确定性 joint_id 碰撞/分叉 | 先搜开放 Issue 再创建；ID 含排序后的 (repo,branch) |
 | 误连公司现网仓 | §0 硬约束；凭证与仓库白名单仅 `zhekui-hub/joint-ci-*` |
 | base tip 频繁变导致过度失效 | versions 是否纳入 base tip 可配置；默认仅参与 PR SHA + 显式依赖 tip |
 
-## 12. 开放问题（实现前确认）— 建议默认
+## 12. 开放问题 — 协调者定案（实验环境）
 
-| # | 问题 | 建议（可落地默认） | 状态 |
+| # | 问题 | 定案 | 状态 |
 |---|---|---|---|
-| 1 | 联合任务 Issue 放在哪个 repo / label？ | **Issue 放 `zhekui-hub/joint-ci-lab` + label `joint-ci`**；标题含 `joint_id` | 已按实验仓坐标采纳，待协调者最终确认 |
-| 2 | GitHub App / token 凭证名与可写仓库列表？ | 实验期白名单仅：`joint-ci-lab`、`joint-ci-driver`、`joint-ci-synapse`、`joint-ci-sim`（`zhekui-hub`）；**凭证名待协调者确认** | **必须协调者确认凭证名** |
-| 3 | 第一版优先配对？ | **P2/P3 先 Driver↔Synapse，P4 再 Sim** | 建议 |
-| 4 | 「联合就绪」是否作为 branch protection required check？ | **先非 required**，观察稳定后再进 branch protection | 建议 |
+| 1 | 联合任务 Issue 放在哪个 repo / label？ | Issue 记在 https://github.com/zhekui-hub/joint-ci-lab ，label `joint-ci`；标题含 `joint_id` | **已确认** |
+| 2 | GitHub App / 客户端？ | **实验期默认 fake GhClient，暂不配真实 GitHub App**；真连时只用 `zhekui-hub` 的 `joint-ci-*` 私有仓白名单 | **已确认** |
+| 3 | 第一版优先配对？ | P2/P3 先 Driver↔Synapse，P4 再 Sim | **已确认** |
+| 4 | 「联合就绪」是否作为 branch protection required check？ | 先非 required，稳定后再进 branch protection | **已确认** |
 
 ---
 
