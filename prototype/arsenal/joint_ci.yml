@@ -36,6 +36,7 @@ jobs:
           JOINT_APP_ID: ${{ secrets.JOINT_CI_APP_ID }}
           REPORT_JSON: ${{ github.event.inputs.report_json || toJson(github.event.client_payload) }}
           JOINT_ID: ${{ github.event.inputs.joint_id }}
+          JOINT_DRY_RUN: ${{ vars.JOINT_DRY_RUN || '1' }}
         run: |
           pip install -r joint_ci/requirements.txt
           python joint_ci/scheduler.py

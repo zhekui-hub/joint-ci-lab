@@ -5,8 +5,8 @@ Responsibilities:
 - parse reports
 - load/create joint issue state
 - wait without holding test pods (exit when deps missing)
-- merge tests, compute joint_key, dispatch once
-- map results back (dispatch hooks left as TODOs wired to existing workflows)
+- merge tests, compute joint_key, dispatch once (dedupe by joint_key)
+- map results back per-PR (exclusive failures isolated)
 
 This file is meant to be moved to Arsenal under joint_ci/scheduler.py.
 """
@@ -15,15 +15,49 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-# When vendored into Arsenal, import from joint_ci.shared
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "shared"))
-from joint_key import make_joint_key, merge_remote_tests, per_pr_required, canonical_json  # noqa: E402
+sys.path.insert(0, os.path.dirname(__file__))
+
+from joint_key import (  # noqa: E402
+    make_joint_key,
+    merge_remote_tests,
+    per_pr_required,
+    canonical_json,
+    hash_merged_tests,
+    workflow_key,
+)
+from gh_client import GhClient, FakeGhClient, default_client  # noqa: E402
+
+# Re-export for experiments/run_local.py
+__all__ = [
+    "JointState",
+    "run",
+    "invalidate",
+    "invalidate_on_push",
+    "workflow_key",
+    "missing_deps",
+    "GhClient",
+    "FakeGhClient",
+]
+
+# In-process serialization keyed by joint_id
+_LOCKS: Dict[str, threading.Lock] = {}
+_LOCKS_GUARD = threading.Lock()
+
+
+def _lock_for(joint_id: str) -> threading.Lock:
+    with _LOCKS_GUARD:
+        if joint_id not in _LOCKS:
+            _LOCKS[joint_id] = threading.Lock()
+        return _LOCKS[joint_id]
 
 
 TERMINAL = {"succeeded", "failed", "cancelled"}
+REUSABLE = {"running", "succeeded"}
 
 
 @dataclass
@@ -61,53 +95,6 @@ class JointState:
         return JointState(**data)
 
 
-def workflow_key(test: Dict[str, Any]) -> str:
-    return test["id"] + ":" + canonical_json(test.get("params") or {})
-
-
-class GhClient:
-    """Thin wrapper; replace with real PyGithub / ghapi + App auth in production."""
-
-    def __init__(self) -> None:
-        self.dry_run = os.environ.get("JOINT_DRY_RUN", "1") == "1"
-
-    def find_open_prs(self, repo: str, branch: str) -> List[Dict[str, Any]]:
-        print(f"[gh] find_open_prs {repo} {branch}")
-        return []
-
-    def find_open_pr(self, repo: str, branch: str) -> Optional[Dict[str, Any]]:
-        prs = self.find_open_prs(repo, branch)
-        if len(prs) > 1:
-            return {"__ambiguous__": True, "count": len(prs), "repo": repo, "branch": branch}
-        return prs[0] if prs else None
-
-    def upsert_issue(self, state: JointState) -> JointState:
-        print(f"[gh] upsert issue for {state.joint_id} status={state.status}")
-        if state.issue_number is None:
-            state.issue_number = 0 if self.dry_run else None
-        return state
-
-    def write_check(
-        self,
-        repo: str,
-        sha: str,
-        name: str,
-        conclusion: str,
-        details_url: str = "",
-        output_summary: str = "",
-    ) -> None:
-        print(f"[gh] check {repo}@{sha[:7]} {name} -> {conclusion} {details_url}")
-
-    def dispatch_test(self, test: Dict[str, Any], versions: Dict[str, str]) -> str:
-        run_id = f"dry-{test['id']}-{versions.get('driver', '')[:6]}"
-        print(f"[gh] dispatch {test['id']} params={test.get('params')} versions={versions} -> {run_id}")
-        return run_id
-
-    def get_run_conclusion(self, run_id: str) -> str:
-        """Prototype: dry-run always succeeds. FakeGhClient overrides."""
-        return "success"
-
-
 def missing_deps(reports: List[Dict[str, Any]], gh: GhClient) -> List[Dict[str, str]]:
     missing: List[Dict[str, str]] = []
     for report in reports:
@@ -129,6 +116,9 @@ def missing_deps(reports: List[Dict[str, Any]], gh: GhClient) -> List[Dict[str, 
             pr = gh.find_open_pr(repo, branch)
             if pr is None:
                 missing.append({"repo": repo, "branch": branch})
+            elif isinstance(pr, dict) and pr.get("__ambiguous__"):
+                # Ambiguity handled separately; treat as not a usable single dep
+                pass
     return missing
 
 
@@ -146,11 +136,9 @@ def find_ambiguous_deps(reports: List[Dict[str, Any]], gh: GhClient) -> Optional
             if report.get("repo") == repo:
                 continue
             prs = gh.find_open_prs(repo, branch)
-            # Also count reports targeting that branch
             report_hits = [
                 r for r in reports if r.get("repo") == repo and r.get("branch") == branch
             ]
-            # Prefer live PR registry; fall back to duplicate reports
             count = len(prs) if prs else len(report_hits)
             if count > 1:
                 return {"repo": repo, "branch": branch, "count": count, "reason": "ambiguous_prs"}
@@ -178,6 +166,7 @@ def invalidate(state: JointState, gh: GhClient, reason: str = "push") -> JointSt
     """Mark joint result invalidated and reset checks to pending/waiting."""
     state.status = "invalidated"
     state.failure_reason = reason
+    # Clear joint_key reuse: old key must not be reused after invalidate
     for r in state.participants:
         gh.write_check(
             r["repo"],
@@ -187,6 +176,22 @@ def invalidate(state: JointState, gh: GhClient, reason: str = "push") -> JointSt
             output_summary=f"invalidated:{reason}",
         )
     return gh.upsert_issue(state)
+
+
+def invalidate_on_push(
+    reports: List[Dict[str, Any]],
+    prior_state: Optional[JointState],
+    gh: Optional[GhClient] = None,
+) -> Optional[JointState]:
+    """E5 helper: invalidate prior state when participant SHAs change."""
+    if prior_state is None:
+        return None
+    gh = gh or default_client()
+    old_versions = prior_state.versions or {}
+    new_versions = {r["repo"]: r["head_sha"] for r in reports if r.get("ci_mode") == "joint"}
+    if old_versions and old_versions != new_versions:
+        return invalidate(prior_state, gh, reason="push")
+    return prior_state
 
 
 def aggregate_and_write_checks(
@@ -233,26 +238,94 @@ def aggregate_and_write_checks(
     return "failed" if public_failed else "succeeded"
 
 
+def _find_reusable(
+    joint_key: str,
+    versions: Dict[str, str],
+    prior_state: Optional[JointState],
+    gh: GhClient,
+) -> Optional[JointState]:
+    """Reuse existing running/succeeded result for same joint_key + versions."""
+    candidates: List[JointState] = []
+    if prior_state is not None:
+        candidates.append(prior_state)
+    issues = getattr(gh, "issues", None)
+    if isinstance(issues, dict):
+        for st in issues.values():
+            if st is prior_state:
+                continue
+            candidates.append(st)
+    for st in candidates:
+        if (
+            getattr(st, "joint_key", None) == joint_key
+            and getattr(st, "status", None) in REUSABLE
+            and getattr(st, "versions", None) == versions
+            and getattr(st, "workflow_runs", None)
+        ):
+            return st
+    return None
+
+
+def _rewrite_checks_from_reuse(
+    reports: List[Dict[str, Any]],
+    merged: List[Dict[str, Any]],
+    state: JointState,
+    gh: GhClient,
+) -> str:
+    """Re-aggregate checks using stored run conclusions for reused workflow_runs."""
+    results: Dict[str, str] = {}
+    for t in merged:
+        key = workflow_key(t)
+        run_id = state.workflow_runs.get(key)
+        if run_id:
+            results[key] = gh.get_run_conclusion(run_id)
+        else:
+            results[key] = "success"
+    return aggregate_and_write_checks(reports, merged, results, state, gh)
+
+
 def run(
     reports: List[Dict[str, Any]],
     joint_id: str = "",
     gh: Optional[GhClient] = None,
     prior_state: Optional[JointState] = None,
 ) -> JointState:
-    gh = gh or GhClient()
+    gh = gh or default_client()
     if not reports:
         raise ValueError("reports required")
 
-    # Non-joint reports: do not create joint issues / do not dispatch via joint scheduler
+    # Non-joint reports: do not create joint issues / do not dispatch
     joint_reports = [r for r in reports if r.get("ci_mode") == "joint"]
     if not joint_reports:
-        state = JointState(joint_id=joint_id or "none", status="skipped_non_joint", participants=reports)
+        state = JointState(
+            joint_id=joint_id or "none",
+            status="skipped_non_joint",
+            participants=reports,
+        )
         state.failure_reason = "ci_mode!=joint"
-        # Do not upsert a real joint issue for baseline
         return state
 
     joint_id = joint_id or f"joint-auto-{joint_reports[0]['repo']}-{joint_reports[0]['pr_number']}"
+
+    # Resume from prior / stored issue if available
+    if prior_state is None and hasattr(gh, "get_issue"):
+        loaded = gh.get_issue(joint_id)
+        if loaded is not None:
+            prior_state = loaded
+
+    lock = _lock_for(joint_id)
+    with lock:
+        return _run_locked(joint_reports, joint_id, gh, prior_state)
+
+
+def _run_locked(
+    joint_reports: List[Dict[str, Any]],
+    joint_id: str,
+    gh: GhClient,
+    prior_state: Optional[JointState],
+) -> JointState:
     state = JointState(joint_id=joint_id, status="waiting_deps", participants=joint_reports)
+    if prior_state is not None and prior_state.issue_number is not None:
+        state.issue_number = prior_state.issue_number
 
     ambiguous = find_ambiguous_deps(joint_reports, gh)
     if ambiguous:
@@ -286,27 +359,33 @@ def run(
 
     versions = {r["repo"]: r["head_sha"] for r in joint_reports}
     merged = merge_remote_tests(joint_reports)
+    cfg_hash = hash_merged_tests(merged)
     state.versions = versions
     state.joint_key = make_joint_key(
         versions,
         image=os.environ.get("JOINT_IMAGE", "default"),
-        test_config_hash=canonical_json(
-            sorted(
-                [
-                    {
-                        "id": t["id"],
-                        "params": t.get("params") or {},
-                        "env": t.get("env") or {},
-                    }
-                    for t in merged
-                ],
-                key=lambda x: json.dumps(x, sort_keys=True),
-            )
-        ),
+        test_config_hash=cfg_hash,
     )
 
-    # If prior succeeded/failed with different versions → caller should invalidate first.
-    # Still safe to proceed with a new key.
+    # joint_key reuse: same key + versions in {running, succeeded} → no re-dispatch
+    # Skip reuse when prior was invalidated (caller invalidates on push, then re-runs).
+    skip_reuse = prior_state is not None and prior_state.status == "invalidated"
+    reusable = None if skip_reuse else _find_reusable(state.joint_key, versions, prior_state, gh)
+    if reusable is not None:
+        state.workflow_runs = dict(reusable.workflow_runs)
+        state.issue_number = reusable.issue_number or state.issue_number
+        if reusable.status == "running":
+            state.status = "running"
+            for r in joint_reports:
+                gh.write_check(r["repo"], r["head_sha"], "joint-ci", "pending")
+        else:
+            state.status = _rewrite_checks_from_reuse(joint_reports, merged, state, gh)
+        return gh.upsert_issue(state)
+
+    # ready → running (immediate in P1; ready is transient)
+    state.status = "ready"
+    gh.upsert_issue(state)
+
     state.status = "running"
     gh.upsert_issue(state)
 
@@ -333,7 +412,13 @@ def main() -> None:
     else:
         reports = data
         joint_id = os.environ.get("JOINT_ID") or ""
-    state = run(reports, joint_id=joint_id)
+
+    gh = default_client()
+    prior = None
+    if joint_id and hasattr(gh, "get_issue"):
+        prior = gh.get_issue(joint_id)
+
+    state = run(reports, joint_id=joint_id, gh=gh, prior_state=prior)
     print(canonical_state(state))
 
 

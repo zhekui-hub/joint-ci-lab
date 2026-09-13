@@ -28,6 +28,32 @@ def test_identity(test: Dict[str, Any]) -> Tuple:
     )
 
 
+def workflow_key(test: Dict[str, Any]) -> str:
+    """Stable key for a merged/dispatched test (id + params)."""
+    return test["id"] + ":" + canonical_json(test.get("params") or {})
+
+
+def hash_merged_tests(merged: Iterable[Dict[str, Any]]) -> str:
+    """Canonical hash of merged remote-test identities (not len(merged))."""
+    identities = sorted(
+        [
+            {
+                "id": t.get("id"),
+                "params": t.get("params") or {},
+                "env": t.get("env") or {},
+            }
+            for t in merged
+        ],
+        key=lambda x: canonical_json(x),
+    )
+    return hashlib.sha256(canonical_json(identities).encode("utf-8")).hexdigest()[:16]
+
+
+def test_config_hash(merged: Iterable[Dict[str, Any]]) -> str:
+    """Alias used by scheduler for joint_key input."""
+    return hash_merged_tests(merged)
+
+
 def merge_remote_tests(reports: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Union of remote tests; identical identity collapsed once.
 

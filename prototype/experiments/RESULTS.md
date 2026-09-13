@@ -21,9 +21,10 @@ Backend: `FakeGhClient` (in-memory; no real GitHub / ChipLTech)
 
 Supporting code:
 - `run_local.py` — scenario runner
-- `fake_gh.py` — FakeGhClient implementing scheduler `GhClient` API
+- `fake_gh.py` — thin re-export of `FakeGhClient` from `../arsenal/gh_client.py`
 - `assert_public_runs.py` — assertions (public_runs, wait/pod, exclusive isolation, invalidation)
-- `../arsenal/scheduler.py` — injectable `gh`, ambiguity, invalidate, per-PR aggregation
+- `../arsenal/gh_client.py` — `GhClient` + in-memory `FakeGhClient`
+- `../arsenal/scheduler.py` — injectable `gh`, joint_key reuse, invalidate, per-PR aggregation
 
 ## Results (all runnable)
 

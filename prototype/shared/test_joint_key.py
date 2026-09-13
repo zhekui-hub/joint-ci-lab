@@ -1,5 +1,12 @@
 import unittest
-from joint_key import make_joint_key, merge_remote_tests, per_pr_required
+from joint_key import (
+    make_joint_key,
+    merge_remote_tests,
+    per_pr_required,
+    hash_merged_tests,
+    test_config_hash,
+    workflow_key,
+)
 
 
 class JointKeyTests(unittest.TestCase):
@@ -67,6 +74,29 @@ class JointKeyTests(unittest.TestCase):
         req = per_pr_required(report, merged)
         self.assertEqual(len(req), 1)
         self.assertTrue(req[0].startswith("multirepo_runtest:"))
+
+    def test_hash_merged_tests_stable_and_content_based(self):
+        a = [
+            {"id": "multirepo_runtest", "params": {"profile": "default"}, "env": {}},
+            {"id": "pseudo", "params": {"cards": 4}, "env": {}},
+        ]
+        b = list(reversed(a))  # order should not matter
+        self.assertEqual(hash_merged_tests(a), hash_merged_tests(b))
+        self.assertEqual(hash_merged_tests(a), test_config_hash(a))
+        c = a + [{"id": "extra", "params": {}, "env": {}}]
+        self.assertNotEqual(hash_merged_tests(a), hash_merged_tests(c))
+        # Not based on len alone: different content same length → different hash
+        d = [
+            {"id": "multirepo_runtest", "params": {"profile": "other"}, "env": {}},
+            {"id": "pseudo", "params": {"cards": 4}, "env": {}},
+        ]
+        self.assertNotEqual(hash_merged_tests(a), hash_merged_tests(d))
+
+    def test_workflow_key(self):
+        self.assertEqual(
+            workflow_key({"id": "pseudo", "params": {"cards": 16}}),
+            'pseudo:{"cards":16}',
+        )
 
 
 if __name__ == "__main__":
