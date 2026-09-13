@@ -72,7 +72,7 @@ def gh_api(path: str, *args: str, method: Optional[str] = None, jq: Optional[str
     if token:
         env["GH_TOKEN"] = token
     try:
-        proc = subprocess.run(command, check=False, capture_output=True, text=True, env=env)
+        proc = subprocess.run(command, check=False, capture_output=True, text=True, encoding='utf-8', errors='replace', env=env)
     except FileNotFoundError as exc:
         raise GhError("gh CLI is not installed or not on PATH") from exc
     if proc.returncode:
@@ -143,18 +143,31 @@ def create_issue(joint_id: str, shas: Dict[str, str]) -> Dict[str, Any]:
 
 def dispatch_probe(shas: Dict[str, str]) -> Dict[str, Any]:
     workflow = os.environ.get("JOINT_PROBE_WORKFLOW", "joint_real_probe.yml")
-    payload = ["-f", f"driver_sha={shas['driver']}", "-f", f"synapse_sha={shas['synapse']}", "-f", f"sim_sha={shas['sim']}"]
+    env = os.environ.copy()
+    token = env.get("JOINT_GH_TOKEN")
+    if token:
+        env["GH_TOKEN"] = token
     before = gh_api_optional(
-        f"repos/{repo_name('lab')}/actions/workflows/{workflow}/runs", "-f", "per_page=20"
+        f"repos/{repo_name('lab')}/actions/workflows/{workflow}/runs?per_page=20"
     ) or {}
     old_ids = {str(r.get("id") or r.get("database_id")) for r in (before.get("workflow_runs", []) if isinstance(before, dict) else [])}
-    gh_api(f"repos/{repo_name('lab')}/actions/workflows/{workflow}/dispatches", "-f", "ref=main", *payload, method="POST")
+    cmd = [
+        "gh", "workflow", "run", workflow,
+        "-R", repo_name("lab"),
+        "-f", f"driver_sha={shas['driver']}",
+        "-f", f"synapse_sha={shas['synapse']}",
+        "-f", f"sim_sha={shas['sim']}",
+        "--ref", "main",
+    ]
+    proc = subprocess.run(cmd, check=False, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+    if proc.returncode:
+        detail = (proc.stderr or proc.stdout).strip().splitlines()[-1:] or ["unknown workflow run error"]
+        raise GhError(f"gh workflow run {workflow} failed (exit {proc.returncode}): {detail[0]}")
     timeout = int(os.environ.get("JOINT_RUN_WAIT_SECONDS", "90"))
     deadline = time.monotonic() + max(0, timeout)
     while time.monotonic() <= deadline:
         runs = gh_api_optional(
-            f"repos/{repo_name('lab')}/actions/workflows/{workflow}/runs",
-            "-f", "per_page=10",
+            f"repos/{repo_name('lab')}/actions/workflows/{workflow}/runs?per_page=10"
         ) or {}
         items = runs.get("workflow_runs", []) if isinstance(runs, dict) else []
         fresh = [r for r in items if str(r.get("id") or r.get("database_id")) not in old_ids]
@@ -190,13 +203,13 @@ def write_joint_check(role: str, sha: str, details_url: str, summary: str) -> Di
 def verify_checks(shas: Dict[str, str], details_url: str) -> Dict[str, Any]:
     observed: Dict[str, Any] = {}
     for role, sha in shas.items():
-        runs = gh_api(f"repos/{repo_name(role)}/commits/{sha}/check-runs", "-f", "per_page=100")
+        runs = gh_api(f"repos/{repo_name(role)}/commits/{sha}/check-runs?per_page=100")
         matches = [r for r in (runs or {}).get("check_runs", []) if r.get("name") == "joint-ci"]
         if matches:
             observed[role] = {"kind": "check", **matches[0]}
             continue
         # Checks:write may be unavailable; verify the documented status fallback.
-        statuses = gh_api(f"repos/{repo_name(role)}/commits/{sha}/statuses", "-f", "per_page=100")
+        statuses = gh_api(f"repos/{repo_name(role)}/commits/{sha}/statuses?per_page=100")
         status_matches = [s for s in (statuses or []) if s.get("context") == "joint-ci"]
         observed[role] = {"kind": "status", **status_matches[0]} if status_matches else None
     urls = set()
