@@ -15,18 +15,19 @@ jobs:
     runs-on: [self-hosted, Linux, X64, grok-box]
     steps:
       - uses: actions/checkout@v4
-      - name: Show python
-        run: python3 --version
-      - name: Install deps
-        run: python3 -m pip install -r prototype/requirements.txt
+      - name: Setup venv
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install -U pip
+          .venv/bin/pip install -r prototype/requirements.txt
       - name: joint_key unit
         working-directory: prototype/shared
-        run: python3 -m unittest test_joint_key.py -v
+        run: ../../.venv/bin/python -m unittest test_joint_key.py -v
       - name: scheduler unit
         working-directory: prototype/arsenal
         env:
           PYTHONPATH: ../shared:.
-        run: python3 -m unittest test_scheduler.py -v
+        run: ../../.venv/bin/python -m unittest test_scheduler.py -v
 
   experiments:
     name: e1-e10-local
@@ -34,13 +35,16 @@ jobs:
     needs: unit
     steps:
       - uses: actions/checkout@v4
-      - name: Install deps
-        run: python3 -m pip install -r prototype/requirements.txt
+      - name: Setup venv
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install -U pip
+          .venv/bin/pip install -r prototype/requirements.txt
       - name: Run E1-E10 and enforce gate
         working-directory: prototype/experiments
         run: |
-          python3 run_local.py scenario_e1.yaml scenario_e2.yaml scenario_e3.yaml scenario_e4.yaml scenario_e5.yaml scenario_e6.yaml scenario_e7.yaml scenario_e8.yaml scenario_e9.yaml scenario_e10.yaml --json | tee /tmp/results.json
-          python3 - <<'PY'
+          ../../.venv/bin/python run_local.py scenario_e1.yaml scenario_e2.yaml scenario_e3.yaml scenario_e4.yaml scenario_e5.yaml scenario_e6.yaml scenario_e7.yaml scenario_e8.yaml scenario_e9.yaml scenario_e10.yaml --json | tee /tmp/results.json
+          ../../.venv/bin/python - <<'PY'
           import json, sys
           data = json.load(open("/tmp/results.json"))
           assert isinstance(data, list), type(data)
