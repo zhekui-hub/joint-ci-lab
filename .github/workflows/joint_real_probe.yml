@@ -19,7 +19,7 @@ defaults:
     shell: pwsh
 jobs:
   validate-inputs:
-    runs-on: [self-hosted, local-ci]
+    runs-on: [self-hosted, local-ci-worker]
     steps:
       - name: Validate explicit participant SHAs
         env:

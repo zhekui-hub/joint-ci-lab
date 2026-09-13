@@ -27,7 +27,7 @@ defaults:
 
 jobs:
   echo-inputs:
-    runs-on: [self-hosted, local-ci]
+    runs-on: [self-hosted, local-ci-worker]
     steps:
       - name: Assert explicit SHA inputs
         env:
