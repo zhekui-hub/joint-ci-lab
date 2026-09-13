@@ -9,7 +9,7 @@ on:
 jobs:
   report:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request != null
-    runs-on: [self-hosted, local-ci]
+    runs-on: [self-hosted, Linux]
     steps:
       - uses: actions/checkout@v4
       - name: Build report & dispatch lab

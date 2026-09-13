@@ -31,22 +31,19 @@ defaults:
   run:
     shell: pwsh
 
+env:
+  PYTHONUTF8: '1'
+
 jobs:
   schedule:
     runs-on: [self-hosted, local-ci]
     steps:
       - uses: actions/checkout@v4
-      - name: Install deps (python3 venv)
+      - name: Prepare local Python dependencies
         run: |
-          python -m venv .venv
-          & .venv/Scripts/python.exe -m pip install --upgrade pip
-          if (Test-Path 'joint_ci/requirements.txt') {
-            & .venv/Scripts/python.exe -m pip install -r joint_ci/requirements.txt
-          } elseif (Test-Path 'prototype/requirements.txt') {
-            & .venv/Scripts/python.exe -m pip install -r prototype/requirements.txt
-          } else {
-            & .venv/Scripts/python.exe -m pip install PyYAML
-          }
+          python -m venv --system-site-packages .venv
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .venv/Scripts/python.exe -c "import yaml; print('PyYAML', yaml.__version__)"
       - name: Run joint scheduler
         env:
           GITHUB_TOKEN: ${{ secrets.JOINT_GH_TOKEN || secrets.GITHUB_TOKEN }}
