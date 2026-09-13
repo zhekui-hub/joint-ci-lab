@@ -1,8 +1,9 @@
 # Joint CI local experiment results
 
 Date: 2026-09-13  
+Last re-verify: 2026-09-13 (post FakeGh → `arsenal/gh_client.py` migration)  
 Runner: `prototype/experiments/run_local.py`  
-Backend: `FakeGhClient` (in-memory; no real GitHub / ChipLTech)
+Backend: `FakeGhClient` from `arsenal/gh_client.py` (`experiments/fake_gh.py` re-export; no real GitHub / ChipLTech)
 
 ## Inventory
 
@@ -43,6 +44,11 @@ Supporting code:
 
 **Score: 10/10 PASS**
 
+### Post-migration regression (experiment agent re-run)
+- `shared` unittest: **6/6 OK**
+- `arsenal` unittest: **9/9 OK**
+- `experiments/run_local.py`: **10/10 PASS**
+
 ## How run_local works
 
 1. Load `scenario_e*.yaml` steps (`create_pr`, `sleep_minutes`, `ready`, `push`, `close_pr`, `inject_failure`, `schedule`, `assert`).
@@ -60,6 +66,9 @@ pip install --break-system-packages 'PyYAML>=6' 'pytest>=7'
 
 # unit tests (shared)
 cd /workspace/joint-ci/prototype/shared && python3 -m unittest test_joint_key.py -v
+
+# unit tests (arsenal scheduler + FakeGh)
+cd /workspace/joint-ci/prototype/arsenal && python3 -m unittest discover -v
 
 # all scenarios
 cd /workspace/joint-ci/prototype/experiments && python3 run_local.py
