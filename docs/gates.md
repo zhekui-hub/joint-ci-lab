@@ -1,5 +1,17 @@
 # 门禁说明
 
+
+## 已启用硬门禁（joint-ci-lab）
+
+- 仓库已改为 **public**
+- `main` Branch protection：
+  - Required checks: `unit-tests`, `e1-e10-local`
+  - `strict`（必须基于最新 main）
+  - `enforce_admins=true`
+  - 禁止 force push / 删除分支
+- mock 仓仍可保持私有；合主线保护只在 lab
+
+
 ## 现状（个人免费号私有仓）
 
 GitHub 对 **免费账号的 private 仓库** 不开放：
