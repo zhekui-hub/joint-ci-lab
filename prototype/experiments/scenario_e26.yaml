@@ -1,13 +1,12 @@
-id: E4
-name: exclusive_stays_on_business_repo
+id: E26
+name: public_only_ignores_exclusive_mix
 steps:
-  # This fixture would fail if Arsenal incorrectly dispatched the exclusive test.
   - inject_failure:
       test_id: pseudo
       params: {cards: 16}
   - create_pr:
       repo: driver
-      branch: feature/e4-driver
+      branch: feature/e26-driver
       ready: true
       schedule: false
       body: |
@@ -18,15 +17,17 @@ steps:
         - id: pseudo
           params: {cards: 16}
           exclusive_to: driver
+        - id: pseudo
+          params: {cards: 4}
   - create_pr:
       repo: synapse
-      branch: feature/e4-synapse
+      branch: feature/e26-synapse
       ready: true
       schedule: false
       body: |
         CI_MODE=joint
         JOINT_WAIT=true
-        DLC_KERNEL_DRIVER_BRANCH=feature/e4-driver
+        DLC_KERNEL_DRIVER_BRANCH=feature/e26-driver
       remote_tests:
         - id: multirepo_runtest
           params: {profile: default}
@@ -35,10 +36,10 @@ steps:
   - schedule: {}
   - assert:
       joint_status: succeeded
-      dispatch_count: 2
       public_runs:
         multirepo_runtest: 1
         pseudo: 1
+      dispatch_count: 2
       checks:
         driver: success
         synapse: success
