@@ -348,7 +348,7 @@ def discover_scenarios(root: str) -> List[str]:
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Run Joint CI local experiment scenarios")
-    parser.add_argument("scenarios", nargs="*", help="scenario yaml paths (default: all scenario_e*.yaml)")
+    parser.add_argument("scenarios", nargs="*", help="scenario yaml paths (default: all scenario_*.yaml)")
     parser.add_argument("--list", action="store_true", help="list scenarios and exit")
     parser.add_argument("--json", action="store_true", help="print machine-readable results")
     args = parser.parse_args(argv)

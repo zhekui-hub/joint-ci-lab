@@ -56,6 +56,13 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(check["conclusion"], "pending")
         self.assertIn(("synapse", "synapse-aaa", "joint-ci"), gh.checks)
 
+    def test_joint_wait_requires_peer_report_even_when_peer_pr_is_open(self):
+        gh = FakeGhClient()
+        gh.seed_pr("driver", "feature/e2-driver", "driver-open")
+        state = run([_synapse_wait()], joint_id="joint-e2-peer-report", gh=gh)
+        self.assertEqual(state.status, "waiting_deps")
+        self.assertEqual(gh.dispatch_count(), 0)
+
     def test_both_ready_dispatch_public_only_once(self):
         gh = FakeGhClient(); syn = _synapse_wait(); drv = _driver()
         gh.add_pr(drv); gh.add_pr(syn)

@@ -21,9 +21,13 @@ permissions:
   statuses: write
   checks: write
 
+defaults:
+  run:
+    shell: pwsh
+
 jobs:
   annotate:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, local-ci]
     steps:
       - uses: actions/checkout@v4
       - name: Publish joint-ci status
@@ -32,14 +36,15 @@ jobs:
           CONCLUSION: ${{ inputs.conclusion }}
           SHA: ${{ inputs.sha || github.sha }}
         run: |
-          case "$CONCLUSION" in
-            success) state=success ;;
-            failure) state=failure ;;
-            pending) state=pending ;;
-            *) state=failure ;;
-          esac
-          gh api -X POST "repos/${{ github.repository }}/statuses/$SHA" \
-            -f state="$state" \
-            -f context="joint-ci" \
-            -f description="Joint CI soft gate ($CONCLUSION)" \
-            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          $state = switch ($env:CONCLUSION) {
+            'success' { 'success'; break }
+            'failure' { 'failure'; break }
+            'pending' { 'pending'; break }
+            default { 'failure'; break }
+          }
+          gh api -X POST "repos/${{ github.repository }}/statuses/$env:SHA" `
+            -f "state=$state" `
+            -f "context=joint-ci" `
+            -f "description=Joint CI soft gate ($env:CONCLUSION)" `
+            -f "target_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+

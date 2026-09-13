@@ -9,51 +9,58 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONUTF8: '1'
+
+defaults:
+  run:
+    shell: pwsh
+
 jobs:
   unit:
     name: unit-tests
-    runs-on: [self-hosted, Linux, X64, grok-box]
+    runs-on: [self-hosted, local-ci]
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Setup venv
         run: |
-          python3 -m venv .venv
-          .venv/bin/python -m pip install -U pip
-          .venv/bin/pip install -r prototype/requirements.txt
+          python -m venv --system-site-packages .venv
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .venv/Scripts/python.exe -c "import yaml; print('PyYAML', yaml.__version__)"
       - name: joint_key unit
         working-directory: prototype/shared
-        run: ../../.venv/bin/python -m unittest test_joint_key.py -v
+        run: '& ../../.venv/Scripts/python.exe -m unittest test_joint_key.py -v'
       - name: scheduler unit
         working-directory: prototype/arsenal
         env:
-          PYTHONPATH: ../shared:.
-        run: ../../.venv/bin/python -m unittest test_scheduler.py -v
+          PYTHONPATH: '../shared;.'
+        run: '& ../../.venv/Scripts/python.exe -m unittest test_scheduler.py -v'
 
   experiments:
     name: e1-e10-local
-    runs-on: [self-hosted, Linux, X64, grok-box]
+    runs-on: [self-hosted, local-ci]
+    timeout-minutes: 10
     needs: unit
     steps:
       - uses: actions/checkout@v4
       - name: Setup venv
         run: |
-          python3 -m venv .venv
-          .venv/bin/python -m pip install -U pip
-          .venv/bin/pip install -r prototype/requirements.txt
-      - name: Run E1-E10 and enforce gate
+          python -m venv --system-site-packages .venv
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .venv/Scripts/python.exe -c "import yaml; print('PyYAML', yaml.__version__)"
+      - name: Run all E and F scenarios and enforce gate
         working-directory: prototype/experiments
         run: |
-          ../../.venv/bin/python run_local.py scenario_e1.yaml scenario_e2.yaml scenario_e3.yaml scenario_e4.yaml scenario_e5.yaml scenario_e6.yaml scenario_e7.yaml scenario_e8.yaml scenario_e9.yaml scenario_e10.yaml --json | tee /tmp/results.json
-          ../../.venv/bin/python - <<'PY'
-          import json, sys
-          data = json.load(open("/tmp/results.json"))
-          assert isinstance(data, list), type(data)
-          failed = [r for r in data if str(r.get("result", "")).upper() != "PASS"]
-          if failed:
-              print("FAILED:", [(f.get("id"), f.get("reason")) for f in failed])
-              sys.exit(1)
-          if len(data) < 10:
-              print(f"expected >=10 scenarios, got {len(data)}")
-              sys.exit(1)
-          print(f"gate ok: {len(data)}/{len(data)} PASS")
-          PY
+          $output = & ../../.venv/Scripts/python.exe run_local.py --json
+          if ($LASTEXITCODE -ne 0) { $output; exit $LASTEXITCODE }
+          $results = @($output | ConvertFrom-Json)
+          $expected = @(Get-ChildItem scenario_*.yaml).Count
+          $failed = @($results | Where-Object { $_.result -ne 'PASS' })
+          if ($expected -lt 21 -or $results.Count -ne $expected -or $failed.Count -gt 0) {
+            $results | Format-Table id,result,reason
+            throw 'Scenario gate failed or scenarios are missing'
+          }
+          $results | Format-Table id,result
+          Write-Output "gate ok: $($results.Count)/$expected PASS"
+

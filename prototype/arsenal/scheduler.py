@@ -165,12 +165,10 @@ def missing_deps(reports: List[Dict[str, Any]], gh: GhClient) -> List[Dict[str, 
                 continue
             if any(r.get("repo") == repo for r in reports):
                 continue
-            pr = gh.find_open_pr(repo, branch)
-            if pr is None:
-                missing.append({"repo": repo, "branch": branch})
-            elif isinstance(pr, dict) and pr.get("__ambiguous__"):
-                # Ambiguity handled separately; treat as not a usable single dep
-                pass
+            # JOINT_WAIT means the peer's report is part of this validation
+            # set. An open PR alone is not enough: accepting it here lets a
+            # fast participant dispatch before a slower peer's hook arrives.
+            missing.append({"repo": repo, "branch": branch})
     return missing
 
 

@@ -21,9 +21,13 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: pwsh
+
 jobs:
   echo-inputs:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, local-ci]
     steps:
       - name: Assert explicit SHA inputs
         env:
@@ -31,5 +35,8 @@ jobs:
           SYNAPSE_SHA: ${{ inputs.synapse_sha }}
           SIM_SHA: ${{ inputs.sim_sha }}
         run: |
-          test -n "$DRIVER_SHA" && test -n "$SYNAPSE_SHA" && test -n "$SIM_SHA"
-          printf 'driver_sha=%s\nsynapse_sha=%s\nsim_sha=%s\n' "$DRIVER_SHA" "$SYNAPSE_SHA" "$SIM_SHA"
+          if ([string]::IsNullOrWhiteSpace($env:DRIVER_SHA) -or [string]::IsNullOrWhiteSpace($env:SYNAPSE_SHA) -or [string]::IsNullOrWhiteSpace($env:SIM_SHA)) { exit 1 }
+          Write-Output "driver_sha=$env:DRIVER_SHA"
+          Write-Output "synapse_sha=$env:SYNAPSE_SHA"
+          Write-Output "sim_sha=$env:SIM_SHA"
+
