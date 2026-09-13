@@ -27,7 +27,7 @@ defaults:
 
 jobs:
   annotate:
-    runs-on: [self-hosted, Windows, X64, local-ci]
+    runs-on: [self-hosted, local-ci]
     steps:
       - uses: actions/checkout@v4
       - name: Publish joint-ci status
@@ -47,3 +47,4 @@ jobs:
             -f context="joint-ci" \
             -f description="Joint CI soft gate ($CONCLUSION)" \
             -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+

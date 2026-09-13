@@ -9,7 +9,7 @@ on:
 jobs:
   report:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request != null
-    runs-on: [self-hosted, Windows, X64, local-ci]
+    runs-on: [self-hosted, local-ci]
     steps:
       - uses: actions/checkout@v4
       - name: Build report & dispatch lab
@@ -72,3 +72,4 @@ jobs:
               -H "Authorization: Bearer $GH_TOKEN" \
               "https://api.github.com/repos/${LAB_OWNER}/${LAB_REPO}/dispatches" \
               -d @-
+

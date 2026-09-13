@@ -16,7 +16,7 @@ defaults:
 jobs:
   unit:
     name: unit-tests
-    runs-on: [self-hosted, Windows, X64, local-ci]
+    runs-on: [self-hosted, local-ci]
     steps:
       - uses: actions/checkout@v4
       - name: Setup venv
@@ -35,7 +35,7 @@ jobs:
 
   experiments:
     name: e1-e10-local
-    runs-on: [self-hosted, Windows, X64, local-ci]
+    runs-on: [self-hosted, local-ci]
     needs: unit
     steps:
       - uses: actions/checkout@v4
@@ -49,3 +49,4 @@ jobs:
         run: |
           ../../.venv/Scripts/python.exe run_local.py scenario_e1.yaml scenario_e2.yaml scenario_e3.yaml scenario_e4.yaml scenario_e5.yaml scenario_e6.yaml scenario_e7.yaml scenario_e8.yaml scenario_e9.yaml scenario_e10.yaml --json | tee results.json
           ../../.venv/Scripts/python.exe -c "import json,sys; data=json.load(open('results.json')); assert isinstance(data,list),type(data); failed=[r for r in data if str(r.get('result','')).upper()!='PASS']; print('FAILED:',[(f.get('id'),f.get('reason')) for f in failed]) if failed else None; sys.exit(1 if failed or len(data)<10 else 0)"
+

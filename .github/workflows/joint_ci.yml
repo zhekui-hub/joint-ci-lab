@@ -33,7 +33,7 @@ defaults:
 
 jobs:
   schedule:
-    runs-on: [self-hosted, Windows, X64, local-ci]
+    runs-on: [self-hosted, local-ci]
     steps:
       - uses: actions/checkout@v4
       - name: Install deps (python3 venv)
@@ -72,3 +72,4 @@ jobs:
             echo "scheduler.py not found" >&2
             exit 1
           fi
+

@@ -1,4 +1,4 @@
-﻿name: joint-real-probe
+name: joint-real-probe
 on:
   workflow_dispatch:
     inputs:
@@ -19,7 +19,7 @@ defaults:
     shell: bash
 jobs:
   validate-inputs:
-    runs-on: [self-hosted, Windows, X64, local-ci]
+    runs-on: [self-hosted, local-ci]
     steps:
       - name: Validate explicit participant SHAs
         env:
@@ -31,3 +31,4 @@ jobs:
           test -n "$SYNAPSE_SHA"
           test -n "$SIM_SHA"
           printf 'driver_sha=%s\nsynapse_sha=%s\nsim_sha=%s\n' "$DRIVER_SHA" "$SYNAPSE_SHA" "$SIM_SHA"
+
