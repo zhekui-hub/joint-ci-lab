@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   validate-inputs:
-    runs-on: [self-hosted, Linux, X64, grok-box]
+    runs-on: ubuntu-latest
     steps:
       - name: Validate explicit participant SHAs
         env:
