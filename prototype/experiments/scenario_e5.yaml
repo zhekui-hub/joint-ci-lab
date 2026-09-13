@@ -1,0 +1,44 @@
+id: E5
+name: push_invalidation
+steps:
+  - create_pr:
+      repo: driver
+      branch: feature/e5-driver
+      ready: true
+      schedule: false
+      head_sha: driver-e5-a
+      body: |
+        CI_MODE=joint
+      remote_tests:
+        - id: multirepo_runtest
+          params: {profile: default}
+  - create_pr:
+      repo: synapse
+      branch: feature/e5-synapse
+      ready: true
+      schedule: false
+      head_sha: synapse-e5-a
+      body: |
+        CI_MODE=joint
+        JOINT_WAIT=true
+        DLC_KERNEL_DRIVER_BRANCH=feature/e5-driver
+      remote_tests:
+        - id: multirepo_runtest
+          params: {profile: default}
+  - schedule: {}
+  - assert:
+      joint_status: succeeded
+      public_runs:
+        multirepo_runtest: 1
+  - push:
+      repo: synapse
+      new_sha: synapse-e5-b
+  - assert:
+      joint_status: succeeded
+      joint_key_changed: true
+      old_checks_not_success: true
+      public_runs_total:
+        multirepo_runtest: 2
+      checks:
+        driver: success
+        synapse: success

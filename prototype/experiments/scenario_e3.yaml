@@ -1,37 +1,36 @@
-id: E2
-name: staggered_wait
+id: E3
+name: public_dedup
 steps:
   - create_pr:
-      repo: synapse
-      branch: feature/e2-synapse
+      repo: driver
+      branch: feature/e3-driver
       ready: true
+      schedule: false
+      body: |
+        CI_MODE=joint
+      remote_tests:
+        - id: multirepo_runtest
+          params: {profile: default}
+        - id: pseudo
+          params: {cards: 4}
+  - create_pr:
+      repo: synapse
+      branch: feature/e3-synapse
+      ready: true
+      schedule: false
       body: |
         CI_MODE=joint
         JOINT_WAIT=true
-        DLC_KERNEL_DRIVER_BRANCH=feature/e2-driver
+        DLC_KERNEL_DRIVER_BRANCH=feature/e3-driver
       remote_tests:
         - id: multirepo_runtest
           params: {profile: default}
-  - assert:
-      joint_status: waiting_deps
-      runner_busy_seconds_max: 0
-      dispatch_count: 0
-  - sleep_minutes: 5
-  - assert:
-      runner_busy_seconds_max: 0
-      dispatch_count: 0
-  - create_pr:
-      repo: driver
-      branch: feature/e2-driver
-      ready: true
-      body: |
-        CI_MODE=joint
-      remote_tests:
-        - id: multirepo_runtest
-          params: {profile: default}
+        - id: pseudo
+          params: {cards: 4}
+  - schedule: {}
   - assert:
       joint_status: succeeded
       public_runs:
         multirepo_runtest: 1
+        pseudo: 1
       same_run_url_checks: [driver, synapse]
-      runner_busy_seconds_max: 0

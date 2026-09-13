@@ -2,10 +2,14 @@
 
 目标：用可重复实验证明「公共测试只跑一次、专属分别跑、等待不占 Pod、失效正确」。
 
+> 设计正文见 `design.md`。实验仓坐标见 design §0.1（`zhekui-hub/joint-ci-*`，全私有）；阶段门禁与 P0–P4 对齐 design §9。禁止碰 ChipLTech。
+
 ## 0. 实验环境约定
 
-- 使用专用测试分支与小号 PR（或 fork），避免污染主干保护规则
-- 记录每次实验的：PR 链接、head SHA、Arsenal Issue、workflow_run id、开始/结束时间、runner 占用时长
+- 主仓 `zhekui-hub/joint-ci-lab`；mock：`joint-ci-driver` / `joint-ci-synapse` / `joint-ci-sim`
+- 本地优先对接 prototype fake backend；稳定后由协调者同步推到 `joint-ci-lab`
+- 使用专用测试分支与小号 PR，避免污染主干保护规则
+- 记录每次实验的：PR 链接、head SHA、Joint Issue（lab）、workflow_run id、开始/结束时间、runner 占用时长
 - 指标：
   - `public_runs`：公共测试实际启动次数（期望 ≈ 1 / 有效代码组合）
   - `pod_wait_seconds`：依赖未齐备阶段 runner 占用秒数（期望 ≈ 0）
@@ -186,6 +190,10 @@ assert check_state(synapse, "joint") == "success"
 ```
 
 ## 发布门禁建议
+
+与 `design.md` §9 一致：
+
+- P0：设计评审通过（含 Origin 边界与开放问题建议默认）
 
 - P1：E2 人工过一遍（等待不占机）
 - P2：E3 + E4 必须自动化绿

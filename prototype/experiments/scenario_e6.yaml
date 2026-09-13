@@ -1,0 +1,35 @@
+id: E6
+name: ambiguous_dependency
+steps:
+  - create_pr:
+      repo: driver
+      branch: feature/e6-shared
+      ready: true
+      pr_number: 601
+      ci_mode: normal
+      body: |
+        ordinary competing PR A
+  - create_pr:
+      repo: driver
+      branch: feature/e6-shared
+      ready: true
+      pr_number: 602
+      ci_mode: normal
+      body: |
+        ordinary competing PR B
+  - create_pr:
+      repo: synapse
+      branch: feature/e6-synapse
+      ready: true
+      body: |
+        CI_MODE=joint
+        JOINT_WAIT=true
+        DLC_KERNEL_DRIVER_BRANCH=feature/e6-shared
+      remote_tests:
+        - id: multirepo_runtest
+          params: {profile: default}
+  - assert:
+      joint_status: failed
+      failure_reason: ambiguous_prs
+      public_runs: {}
+      dispatch_count: 0

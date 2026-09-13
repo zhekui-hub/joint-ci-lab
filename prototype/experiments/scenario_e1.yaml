@@ -1,0 +1,14 @@
+id: E1
+name: single_repo_baseline
+steps:
+  - create_pr:
+      repo: driver
+      branch: feature/e1-driver
+      ci_mode: normal
+      ready: true
+      body: |
+        ordinary PR without joint markers
+  - assert:
+      no_joint_issue: true
+      joint_status: skipped_non_joint
+      dispatch_count: 0

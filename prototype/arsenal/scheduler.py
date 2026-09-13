@@ -62,7 +62,7 @@ class JointState:
 
 
 def workflow_key(test: Dict[str, Any]) -> str:
-    return test["id"] + ":" + json.dumps(test.get("params") or {}, sort_keys=True)
+    return test["id"] + ":" + canonical_json(test.get("params") or {})
 
 
 class GhClient:

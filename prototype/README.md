@@ -17,3 +17,14 @@ JOINT_DRY_RUN=1 REPORT_JSON='[{"repo":"synapse","pr_number":456,"head_sha":"aaa"
 ```
 
 接入真实仓库后：把 `shared/` 与 `scheduler.py` 放进 Arsenal `joint_ci/`，workflow 放进 `.github/workflows/`，并用 GitHub App 凭证替换 dry-run 客户端。
+
+## 本地实验（E1–E10）
+
+```bash
+cd experiments
+python3 run_local.py              # 全部场景
+python3 run_local.py scenario_e2.yaml
+python3 run_local.py --json
+```
+
+详见 `experiments/RESULTS.md`。使用 `FakeGhClient`，不访问真实 GitHub。

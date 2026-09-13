@@ -1,0 +1,53 @@
+id: E10
+name: three_repo_union
+steps:
+  - create_pr:
+      repo: driver
+      branch: feature/e10-driver
+      ready: true
+      schedule: false
+      body: |
+        CI_MODE=joint
+      remote_tests:
+        - id: multirepo_runtest
+          params: {profile: default}
+        - id: pseudo
+          params: {cards: 16}
+          exclusive_to: driver
+  - create_pr:
+      repo: synapse
+      branch: feature/e10-synapse
+      ready: true
+      schedule: false
+      body: |
+        CI_MODE=joint
+        JOINT_WAIT=true
+        DLC_KERNEL_DRIVER_BRANCH=feature/e10-driver
+        DLC_SIM_BRANCH=feature/e10-sim
+      remote_tests:
+        - id: multirepo_runtest
+          params: {profile: default}
+        - id: pseudo
+          params: {cards: 4}
+  - create_pr:
+      repo: sim
+      branch: feature/e10-sim
+      ready: true
+      schedule: false
+      body: |
+        CI_MODE=joint
+        JOINT_WAIT=true
+        DLC_KERNEL_DRIVER_BRANCH=feature/e10-driver
+      remote_tests:
+        - id: arc_multirepo
+          params: {enable_abs_unit: false}
+        - id: multirepo_runtest
+          params: {profile: default}
+  - schedule: {}
+  - assert:
+      joint_status: succeeded
+      public_runs:
+        multirepo_runtest: 1
+        arc_multirepo: 1
+        pseudo: 1
+      merged_test_ids_contains: [multirepo_runtest, arc_multirepo, pseudo]

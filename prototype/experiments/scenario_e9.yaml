@@ -1,0 +1,29 @@
+id: E9
+name: cancel_exit_joint
+steps:
+  - create_pr:
+      repo: driver
+      branch: feature/e9-driver
+      ready: true
+      body: |
+        CI_MODE=joint
+      remote_tests:
+        - id: multirepo_runtest
+          params: {profile: default}
+  - create_pr:
+      repo: synapse
+      branch: feature/e9-synapse
+      ready: true
+      body: |
+        CI_MODE=joint
+        JOINT_WAIT=true
+        DLC_KERNEL_DRIVER_BRANCH=feature/e9-driver
+      remote_tests:
+        - id: multirepo_runtest
+          params: {profile: default}
+  - assert:
+      joint_status: succeeded
+  - close_pr:
+      repo: synapse
+  - assert:
+      joint_status: cancelled

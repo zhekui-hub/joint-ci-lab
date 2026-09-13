@@ -1,0 +1,34 @@
+id: E7
+name: draft_gate
+steps:
+  - create_pr:
+      repo: driver
+      branch: feature/e7-driver
+      ready: false
+      is_draft: true
+      body: |
+        CI_MODE=joint
+      remote_tests:
+        - id: multirepo_runtest
+          params: {profile: default}
+  - create_pr:
+      repo: synapse
+      branch: feature/e7-synapse
+      ready: true
+      body: |
+        CI_MODE=joint
+        JOINT_WAIT=true
+        DLC_KERNEL_DRIVER_BRANCH=feature/e7-driver
+      remote_tests:
+        - id: multirepo_runtest
+          params: {profile: default}
+  - assert:
+      joint_status: waiting_deps
+      dispatch_count: 0
+      runner_busy_seconds_max: 0
+  - ready:
+      repo: driver
+  - assert:
+      joint_status: succeeded
+      public_runs:
+        multirepo_runtest: 1
