@@ -1,0 +1,41 @@
+# 迁入 Arsenal: .github/workflows/joint_ci.yml
+name: joint-ci
+on:
+  workflow_dispatch:
+    inputs:
+      report_json:
+        description: JSON array of per-repo reports
+        required: true
+      joint_id:
+        description: Existing joint id to resume (optional)
+        required: false
+        default: ""
+  repository_dispatch:
+    types: [joint_ci_report]
+
+permissions:
+  contents: read
+  issues: write
+  checks: write
+  statuses: write
+  actions: write
+
+jobs:
+  schedule:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run joint scheduler
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Prefer a GitHub App token that can write checks across repos
+          JOINT_APP_PEM: ${{ secrets.JOINT_CI_APP_PEM }}
+          JOINT_APP_ID: ${{ secrets.JOINT_CI_APP_ID }}
+          REPORT_JSON: ${{ github.event.inputs.report_json || toJson(github.event.client_payload) }}
+          JOINT_ID: ${{ github.event.inputs.joint_id }}
+        run: |
+          pip install -r joint_ci/requirements.txt
+          python joint_ci/scheduler.py

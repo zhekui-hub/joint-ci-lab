@@ -1,0 +1,23 @@
+id: E2
+name: staggered_wait
+steps:
+  - create_pr:
+      repo: synapse
+      branch: feature/e2-synapse
+      body: |
+        CI_MODE=joint
+        JOINT_WAIT=true
+        DLC_KERNEL_DRIVER_BRANCH=feature/e2-driver
+  - assert:
+      joint_status: waiting_deps
+      runner_busy_seconds_max: 30
+  - sleep_minutes: 5
+  - create_pr:
+      repo: driver
+      branch: feature/e2-driver
+      ready: true
+  - assert:
+      joint_status: succeeded
+      public_runs:
+        multirepo_runtest: 1
+      same_run_url_checks: [driver, synapse]

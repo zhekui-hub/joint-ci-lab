@@ -1,0 +1,23 @@
+# 示例：放到 Synapse/Driver/Sim 的 .github/workflows/joint_ci_hook.yml
+name: joint-ci-hook
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  issue_comment:
+    types: [created]
+
+jobs:
+  report:
+    if: github.event.pull_request != null || startsWith(github.event.comment.body, '/joint-ci')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build report & dispatch Arsenal
+        env:
+          GH_TOKEN: ${{ secrets.JOINT_CI_DISPATCH_TOKEN }}
+        run: |
+          # 1) parse PR body for CI_MODE / deps
+          # 2) run determine_workflows_*.sh → remote_tests JSON
+          # 3) if CI_MODE!=joint: exit 0 (normal router handles)
+          # 4) repository_dispatch to Arsenal joint_ci_report
+          echo "see prototype/shared/joint_schema.md"
