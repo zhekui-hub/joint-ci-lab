@@ -12,7 +12,7 @@ permissions:
 jobs:
   unit:
     name: unit-tests
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, grok-box]
     steps:
       - uses: actions/checkout@v4
       - name: Setup venv
@@ -31,7 +31,7 @@ jobs:
 
   experiments:
     name: e1-e10-local
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, grok-box]
     needs: unit
     steps:
       - uses: actions/checkout@v4

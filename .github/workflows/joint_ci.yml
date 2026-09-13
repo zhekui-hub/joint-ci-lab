@@ -1,7 +1,6 @@
 # 迁入 Arsenal / joint-ci-lab: .github/workflows/joint_ci.yml
 # 目标：event → scheduler（waiting 不占机）→ ready 后显式 SHA 派发；默认可 dry-run。
-# The scheduler itself is lightweight; keep orchestration independent of the
-# optional self-hosted grok-box runner so a stale runner cannot block reports.
+# Self-hosted grok-box: no actions/setup-python (fails on this runner) — use python3 venv.
 name: joint-ci
 on:
   workflow_dispatch:
@@ -30,7 +29,7 @@ permissions:
 
 jobs:
   schedule:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, grok-box]
     steps:
       - uses: actions/checkout@v4
       - name: Install deps (python3 venv)
