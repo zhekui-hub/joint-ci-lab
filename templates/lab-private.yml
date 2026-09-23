@@ -1,0 +1,16 @@
+# Author: zhekui. Isolated private-check smoke; no production code or external secrets.
+# Entry: normal PR lifecycle and original GitHub rerun/cancel UI.
+name: lab-private
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+permissions:
+  contents: read
+jobs:
+  private:
+    name: lab-private
+    runs-on: [self-hosted, Linux, X64, joint-ci-cloud]
+    timeout-minutes: 2
+    steps:
+      - name: Isolated private check
+        run: python3 -c 'import platform; print(platform.python_version())'
