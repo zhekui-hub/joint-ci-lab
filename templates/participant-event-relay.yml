@@ -1,0 +1,33 @@
+# Author: zhekui. Trusted event-only relay for isolated lab participants.
+# Entry: existing PR/private-workflow events; no PR checkout, no body execution.
+name: joint-ci-event-relay
+on:
+  pull_request_target:
+    types: [opened, synchronize, edited, reopened, closed, ready_for_review, converted_to_draft]
+  workflow_run:
+    workflows: ['lab-private']
+    types: [in_progress, completed]
+permissions:
+  contents: read
+jobs:
+  report:
+    runs-on: [self-hosted, Linux, X64, joint-ci-cloud]
+    timeout-minutes: 2
+    steps:
+      - name: Send only an event hint from trusted default-branch workflow
+        env:
+          GH_TOKEN: ${{ secrets.JOINT_CI_LAB_APP_TOKEN }}
+          CONTROL_REPO: ${{ vars.JOINT_CI_CONTROL_REPO }}
+          SOURCE_REPO: ${{ github.repository }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > "$RUNNER_TEMP/joint-ci-hint-$GITHUB_RUN_ID.json"
+          import json, os, re
+          control=os.environ['CONTROL_REPO']
+          if not re.fullmatch(r'[A-Za-z0-9_.-]+/joint-ci-[A-Za-z0-9_.-]+', control) or control.lower().startswith('chipltech/'):
+              raise SystemExit('Only an explicit isolated lab control repository is allowed')
+          print(json.dumps({'event_type':'joint_ci_event','client_payload':{'repo':os.environ['SOURCE_REPO'],'run_id':os.environ['EVENT_RUN_ID']}}))
+          PY
+          gh api --method POST "repos/$CONTROL_REPO/dispatches" --input "$RUNNER_TEMP/joint-ci-hint-$GITHUB_RUN_ID.json"

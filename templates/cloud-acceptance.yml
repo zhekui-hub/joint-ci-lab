@@ -1,0 +1,33 @@
+# Author: zhekui. Manual-only isolated self-hosted acceptance template.
+# Entry: workflow_dispatch runs disjoint source-identical shards; no PR/production hook.
+name: joint-ci-cloud-acceptance
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    runs-on: [self-hosted, Linux, X64, joint-ci-cloud]
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify environment and frozen bundle
+        run: python3 tools/acceptance.py preflight
+      - name: Run one shard
+        env:
+          SHARD: ${{ matrix.shard }}
+          RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}
+          RESULT_DIR: ${{ runner.temp }}/joint-ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+        run: python3 tools/acceptance.py run --shard "$SHARD/3" --jobs 2 --run-id "$RUN_ID" --out "$RESULT_DIR"
+      - name: Preserve all results including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: joint-ci-${{ github.run_id }}-${{ github.run_attempt }}-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/joint-ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+          if-no-files-found: error

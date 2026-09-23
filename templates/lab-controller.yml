@@ -1,0 +1,57 @@
+# Author: zhekui. Isolated controller/worker bridge; one local state host only.
+# Entry: repository_dispatch plus short scheduled compensation; never merges PRs.
+name: joint-ci-lab-controller
+on:
+  repository_dispatch:
+    types: [joint_ci_event]
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+permissions:
+  contents: read
+jobs:
+  reconcile:
+    runs-on: [self-hosted, Linux, X64, joint-ci-controller]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refresh, map native event and write isolated lab status
+        env:
+          GH_TOKEN: ${{ secrets.JOINT_CI_LAB_APP_TOKEN }}
+          CONFIG: ${{ vars.JOINT_CI_CONFIG_PATH }}
+          STATE_DB: ${{ vars.JOINT_CI_STATE_DB }}
+          HINT: ${{ toJSON(github.event.client_payload || null) }}
+        run: |
+          set -euo pipefail
+          test -n "$CONFIG" && test -n "$STATE_DB"
+          hint="$RUNNER_TEMP/joint-ci-event-$GITHUB_RUN_ID.json"
+          printf '%s' "$HINT" > "$hint"
+          if [ "$HINT" != null ]; then
+            python3 tools/controller.py --config "$CONFIG" --db "$STATE_DB" --event "$hint" --apply-lab-status
+          else
+            python3 tools/controller.py --config "$CONFIG" --db "$STATE_DB" --apply-lab-status
+          fi
+  work:
+    needs: reconcile
+    runs-on: [self-hosted, Linux, X64, joint-ci-worker]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute admitted isolated smoke tasks
+        env:
+          STATE_DB: ${{ vars.JOINT_CI_STATE_DB }}
+          EVIDENCE_DIR: ${{ vars.JOINT_CI_WORKER_EVIDENCE }}
+        run: python3 -m cloud_joint.cli --db "$STATE_DB" work --out "$EVIDENCE_DIR" --jobs 4 --timeout 30
+  finalize:
+    if: always()
+    needs: [reconcile, work]
+    runs-on: [self-hosted, Linux, X64, joint-ci-controller]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refresh private checks and publish current evidence
+        env:
+          GH_TOKEN: ${{ secrets.JOINT_CI_LAB_APP_TOKEN }}
+          CONFIG: ${{ vars.JOINT_CI_CONFIG_PATH }}
+          STATE_DB: ${{ vars.JOINT_CI_STATE_DB }}
+        run: python3 tools/controller.py --config "$CONFIG" --db "$STATE_DB" --apply-lab-status
