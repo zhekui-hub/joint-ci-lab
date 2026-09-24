@@ -80,8 +80,8 @@ class Controller:
     def native_event(self, repo, run_id):
         """Payload is only a hint: fetch actual GitHub run before acting.
 
-        Mapping is persisted at first in_progress observation. A cancelled run
-        never observed while current cannot be safely attributed; fail closed.
+        Control mapping requires in_progress. Late first-attempt success can
+        acknowledge only its own receipt, without retry/cancellation authority.
         """
         if repo not in self.specs:
             raise PermissionError("unexpected participant")
@@ -96,6 +96,14 @@ class Controller:
         with self.c.store.transaction() as db:
             row = db.execute("SELECT body FROM native_runs WHERE id=?", (key,)).fetchone()
             binding = json.loads(row[0]) if row else None
+        if binding and binding.get("terminal_only"):
+            if run["status"] != "completed" or run.get("conclusion") != "success" or run["head_sha"] != binding["head"]:
+                raise Conflict("terminal receipt cannot control native execution")
+            with self.c.store.transaction() as db:
+                self._reject_newer_binding(db, repo, run_id)
+            return binding
+        if binding is None and self._late_success(run):
+            return self._acknowledge_late_success(repo, run_id, run)
         if binding is None:
             candidates = []
             for g in self.c.store.export()["groups"]:
@@ -134,6 +142,98 @@ class Controller:
                           (binding["generation"], binding["attempt"]))
         return binding
 
+    @staticmethod
+    def _late_success(run):
+        # A missed rerun must not silently skip the public retry semantics.
+        return (run.get("status") == "completed" and run.get("conclusion") == "success"
+                and run.get("run_attempt") == 1)
+
+    @staticmethod
+    def _reject_newer_binding(db, repo, run_id):
+        prefix = f"{repo}:{run_id}:"
+        if any(r[0].startswith(prefix) and int(r[0][len(prefix):]) > 1
+               for r in db.execute("SELECT id FROM native_runs") if not r[0].startswith("pending:")):
+            raise Conflict("late success belongs to an older native attempt")
+
+    def _acknowledge_late_success(self, repo, run_id, run):
+        """A terminal receipt is not an execution binding or reusable CI result.
+
+        Revalidate live PR identity, then atomically recheck local membership.
+        Only the exact blocker is removed. Private/public gates remain independent.
+        """
+        key = f"{repo}:{run_id}:1"
+        prs = {p["number"]: self.api.request(repo, f'pulls/{p["number"]}')
+               for p in run.get("pull_requests", [])}
+        with self.c.store.transaction() as db:
+            candidates = []
+            for row in db.execute("SELECT body FROM groups"):
+                g = json.loads(row[0])
+                for m in g["plan"]["members"]:
+                    pr = prs.get(m["pr"]) if m["repo"] == repo else None
+                    version = g["plan"]["versions"].get(repo, {})
+                    if (g["active"] and pr and pr["state"] == "open" and not pr.get("merged")
+                            and pr["head"]["sha"] == version.get("head") == run["head_sha"]
+                            and pr["base"]["sha"] == version.get("base")
+                            and pr["head"]["repo"]["full_name"] == repo):
+                        candidates.append((g, m))
+            if len(candidates) != 1:
+                raise Conflict("late success lacks unambiguous current PR identity; retain pending")
+            g, m = candidates[0]
+            # A previously observed newer attempt must never be superseded.
+            self._reject_newer_binding(db, repo, run_id)
+            binding = dict(group=g["id"], consumer=member_id(m), generation=g["generation"],
+                           attempt=g["attempt"], head=run["head_sha"], terminal_only=True)
+            db.execute("INSERT OR IGNORE INTO native_runs VALUES(?,?)", (key, canonical(binding)))
+            if key in g.get("native_blockers", {}):
+                del g["native_blockers"][key]
+                self.c._save_group(db, g)
+            return binding
+
+    def _consume_native_event(self, repo, run_id, recovery=False):
+        if repo not in self.specs or run_id < 1:
+            raise ValueError("invalid native event hint")
+        key = f"unverified:{repo}:{run_id}"
+        receipt_id = f"pending:{repo}:{run_id}"
+        # Journal before network I/O. Recovery preserves the known head scope.
+        with self.c.store.transaction() as db:
+            old = db.execute("SELECT body FROM native_runs WHERE id=?", (receipt_id,)).fetchone()
+            receipt = json.loads(old[0]) if recovery and old else dict(repo=repo, blocker=key, head=None)
+            receipt["recovery_checked_at"] = time.time()
+            db.execute("INSERT INTO native_runs VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body",
+                       (receipt_id, canonical(receipt)))
+        self._inherit_pending_events()
+        run = self.api.request(repo, f"actions/runs/{run_id}")
+        receipt["head"] = run["head_sha"]
+        with self.c.store.transaction() as db:
+            db.execute("UPDATE native_runs SET body=? WHERE id=?", (canonical(receipt), receipt_id))
+        self._inherit_pending_events()
+        if recovery and not self._late_success(run):
+            return None  # Background recovery must not invent retry/cancel intent.
+        binding = self._handle_native_run(repo, run_id, run)
+        with self.c.store.transaction() as db:
+            db.execute("DELETE FROM native_runs WHERE id=?", (receipt_id,))
+        self._inherit_pending_events()
+        return binding
+
+    def _recover_late_successes(self):
+        # Bounded round-robin probes: unresolved receipts cannot starve later ones.
+        with Path(self.c.store.path + ".event.lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            with self.c.store.transaction() as db:
+                receipts = [(r[0], json.loads(r[1])) for r in db.execute(
+                    "SELECT id,body FROM native_runs WHERE id LIKE 'pending:%'")]
+            errors = []
+            started = time.monotonic()
+            for receipt_id, receipt in sorted(receipts, key=lambda r: (r[1].get("recovery_checked_at", 0), r[0]))[:16]:
+                if time.monotonic() - started >= 5:
+                    break  # One transport request can still take its own timeout.
+                try:
+                    self._consume_native_event(receipt["repo"], int(receipt_id.rsplit(":", 1)[1]), recovery=True)
+                except (Conflict, RuntimeError) as exc:
+                    errors.append(str(exc))
+            if errors:
+                raise Conflict("late-event recovery incomplete: " + "; ".join(errors))
+
     def _inherit_pending_events(self):
         """Use the existing native_runs journal for unresolved event receipts.
 
@@ -170,7 +270,8 @@ class Controller:
 
         Errors remain visible to the CLI. Failed refresh never projects success;
         an explicit pending projection revokes old statuses when transport works.
-        A missing initial group still fails closed and needs a later native run.
+        A missing initial group stays pending; later cycles can acknowledge a
+        uniquely attributed first-attempt success without user intervention.
         """
         result = dict(proposals=[], native_event=None, statuses=[], errors=[], timings={},
                       mode="LAB_STATUS_WRITE" if publish else "READ_ONLY_SHADOW")
@@ -187,37 +288,19 @@ class Controller:
                 result["timings"][name] = round(time.monotonic() - start, 6)
 
         if hint and hint.get("run_id"):
-            def handle_event():
-                repo, run_id = hint["repo"], int(hint["run_id"])
-                if repo not in self.specs or run_id < 1:
-                    raise ValueError("invalid native event hint")
-                key = f"unverified:{repo}:{run_id}"
-                receipt_id = f"pending:{repo}:{run_id}"
-                # Persist before the network call: even process death cannot let
-                # a later finalize silently reuse green without event handling.
-                with self.c.store.transaction() as db:
-                    db.execute("INSERT INTO native_runs VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body",
-                               (receipt_id, canonical(dict(repo=repo, blocker=key, head=None))))
-                self._inherit_pending_events()
-                run = self.api.request(repo, f"actions/runs/{run_id}")
-                with self.c.store.transaction() as db:
-                    db.execute("UPDATE native_runs SET body=? WHERE id=?",
-                               (canonical(dict(repo=repo, blocker=key, head=run["head_sha"])), receipt_id))
-                self._inherit_pending_events()
-                binding = self._handle_native_run(repo, run_id, run)
-                with self.c.store.transaction() as db:
-                    db.execute("DELETE FROM native_runs WHERE id=?", (receipt_id,))
-                self._inherit_pending_events()
-                return binding
             with Path(self.c.store.path + ".event.lock").open("a") as lock:
                 fcntl.flock(lock, fcntl.LOCK_EX)
-                result["native_event"] = stage("native_event", handle_event)
+                result["native_event"] = stage("native_event", lambda: self._consume_native_event(
+                    hint["repo"], int(hint["run_id"])))
 
         def refresh_and_project():
             result["proposals"] = stage("sync", self.sync) or []
+            if not result["errors"]:
+                stage("late_success_recovery", self._recover_late_successes)
             if publish:
                 result["statuses"] = stage("publish", lambda: self._publish_current(
-                    force_pending=bool(result["errors"]))) or []
+                    force_pending=any(e["stage"] in ("native_event", "sync")
+                                      for e in result["errors"]))) or []
 
         if publish:
             with Path(self.c.store.path + ".publish.lock").open("a") as lock:
