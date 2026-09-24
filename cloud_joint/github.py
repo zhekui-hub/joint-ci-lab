@@ -31,19 +31,25 @@ class GitHub:
             raise PermissionError("repository outside explicit lab allowlist")
         if method != "GET" and not self.writable:
             raise PermissionError("read-only transport")
+        endpoint = f"repos/{repo}" + ("/" + path.lstrip("/") if path else "")
         args = ["gh", "api", "--method", method, "-H", "X-GitHub-Api-Version: 2022-11-28",
-                f"repos/{repo}/{path}"]
+                endpoint]
         if body is not None:
             args += ["--input", "-"]
         for attempt in range(4):
-            result = self.command(args, json.dumps(body) if body is not None else None)
+            try:
+                result = self.command(args, json.dumps(body) if body is not None else None)
+            except subprocess.TimeoutExpired:
+                raise RuntimeError("GitHub request timed out after 40s") from None
             if result.returncode == 0:
                 return json.loads(result.stdout) if result.stdout.strip() else None
             # For non-idempotent dispatch, caller must reconcile uncertain delivery.
             transient = re.search(r"HTTP (429|500|502|503|504)\b", result.stderr)
             if not transient or attempt == 3 or method != "GET":
-                raise RuntimeError("GitHub request failed; see redacted HTTP class: " +
-                                   (transient[0] if transient else "non-retryable/unknown"))
+                status = re.search(r"HTTP ([1-5][0-9]{2})\b", result.stderr)
+                raise RuntimeError("GitHub request failed; " +
+                                   (status[0] if status else "HTTP status unavailable") +
+                                   f"; attempts={attempt + 1}")
             self.sleep(min(2 ** attempt, 8))
         raise RuntimeError("unreachable")
 

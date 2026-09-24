@@ -23,16 +23,11 @@ def main():
     config = json.loads(Path(args.config).read_text())
     api = GitHub([r["repo"] for r in config["repositories"]], writable=args.apply_lab_status)
     c = Controller(args.db, api, config)
-    proposals = c.sync()
-    event = None
-    if args.event:
-        hint = json.loads(Path(args.event).read_text())
-        if hint.get("run_id"):
-            event = c.native_event(hint["repo"], hint["run_id"])
-    print(json.dumps(dict(proposals=proposals, native_event=event,
-                         statuses=c.publish() if args.apply_lab_status else [],
-                         mode="LAB_STATUS_WRITE" if args.apply_lab_status else "READ_ONLY_SHADOW"), indent=2))
+    hint = json.loads(Path(args.event).read_text()) if args.event else None
+    result = c.cycle(hint, publish=args.apply_lab_status)
+    print(json.dumps(result, indent=2))
+    return 2 if result["errors"] else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
