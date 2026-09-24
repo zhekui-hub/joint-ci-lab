@@ -190,6 +190,34 @@ else:
             self.assertTrue(all('native_event_unresolved' in empty.c.summary(g['id'])['blockers']
                                 for g in empty.c.store.export()['groups']))
             self.assertFalse(any(x['state']=='success' for x in json.loads(later.stdout)['statuses']))
+            # A2: completed first-attempt success arrives after the public work.
+            # Use the real CLI twice; duplicate delivery must add no public work.
+            late_db = root/'late.sqlite'
+            late = Controller(late_db, api, cfg)
+            late.sync()
+            drain(late_db, root/'late-workers')
+            tasks_before = late.c.store.export()['tasks']
+            command[command.index('--db')+1] = str(late_db)
+            (root/'run.json').write_text(json.dumps(dict(api.run, status='completed', conclusion='success')))
+            with late.c.store.transaction() as sql:
+                group = json.loads(sql.execute('SELECT body FROM groups').fetchone()[0])
+                group['native_blockers'] = {f'{repo}:123:1': [repo + '#1']}
+                sql.execute('UPDATE groups SET body=? WHERE id=?', (json.dumps(group), group['id']))
+                sql.execute('INSERT INTO native_runs VALUES(?,?)', (f'pending:{repo}:123', json.dumps(
+                    dict(repo=repo, head='a' * 40, blocker=f'unverified:{repo}:123'))))
+            recovered = subprocess.run(command, env=env, capture_output=True, text=True, timeout=20)
+            self.assertEqual(recovered.returncode, 0, recovered.stdout + recovered.stderr)
+            projected = json.loads(recovered.stdout)
+            self.assertIsNone(projected['native_event'])
+            self.assertEqual(len(projected['statuses']), 4)
+            self.assertTrue(all(s['state'] == 'success' for s in projected['statuses']))
+            for _ in range(2):
+                done = subprocess.run(command + ['--event', str(root/'event.json')], env=env,
+                                      capture_output=True, text=True, timeout=20)
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                self.assertTrue(json.loads(done.stdout)['native_event']['terminal_only'])
+            self.assertEqual(late.c.store.export()['tasks'], tasks_before)
+            self.assertTrue(late.c.summary(late.c.store.export()['groups'][0]['id'])['merge_ready'])
 
 
 if __name__ == '__main__':
