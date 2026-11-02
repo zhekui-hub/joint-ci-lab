@@ -1,0 +1,10 @@
+name: Probe First Suite
+on:
+  workflow_dispatch:
+
+jobs:
+  first:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Occupy the commit with an older check suite
+        run: echo "first suite for $GITHUB_SHA"
