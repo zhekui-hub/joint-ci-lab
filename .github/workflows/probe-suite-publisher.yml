@@ -1,0 +1,42 @@
+name: Probe Publisher
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - name: Publish a check run for this run's own commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh api -X POST "repos/$REPO/check-runs" \
+            -f name="probe/creator-sha" \
+            -f head_sha="$SHA" \
+            -f status=completed \
+            -f conclusion=success \
+            -f external_id="probe:$RUN_ID" \
+            -f details_url="https://github.com/$REPO/actions/runs/$RUN_ID" \
+            --jq '{id, name, head_sha, suite: .check_suite.id}'
+
+      - name: Publish a check run for another commit (control)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          MAIN_SHA=$(gh api "repos/$REPO/commits/main" --jq .sha)
+          echo "control target: $MAIN_SHA"
+          gh api -X POST "repos/$REPO/check-runs" \
+            -f name="probe/other-sha" \
+            -f head_sha="$MAIN_SHA" \
+            -f status=completed \
+            -f conclusion=success \
+            -f external_id="probe-other:$RUN_ID" \
+            --jq '{id, name, head_sha, suite: .check_suite.id}'
