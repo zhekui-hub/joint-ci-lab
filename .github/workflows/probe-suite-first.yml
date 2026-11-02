@@ -1,6 +1,7 @@
 name: Probe First Suite
 on:
-  workflow_dispatch:
+  push:
+    branches: ['probe/**']
 
 jobs:
   first:
